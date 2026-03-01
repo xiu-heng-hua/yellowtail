@@ -33,3 +33,5 @@ RUN --mount=type=tmpfs,dst=/var/cache \
     --mount=type=tmpfs,dst=/var/log \
     --mount=type=bind,dst=/tmp/build.sh,source=build/yellowtail-kmods.sh \
     bash /tmp/build.sh
+
+RUN bootc container lint
