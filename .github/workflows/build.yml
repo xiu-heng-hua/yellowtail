@@ -1,0 +1,39 @@
+name: Build and Push the Container Image
+
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  build:
+    name: Build and push the container image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare the environment
+        run: |
+          echo "RELEASE_DATE=$(date --rfc-3339=date)" >> ${GITHUB_ENV}
+
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Build the image using Buildah
+        id: buildah-build
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: yellowtail
+          tags: latest ${{ env.RELEASE_DATE }}
+          containerfiles: |
+            ./Containerfile
+
+      - name: Push the image to GHCR
+        id: push-to-registry
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.buildah-build.outputs.image }}
+          tags: ${{ steps.buildah-build.outputs.tags }}
+          registry: ghcr.io/${{ github.repository_owner }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
