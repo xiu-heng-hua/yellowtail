@@ -48,7 +48,7 @@ jobs:
             ./Containerfile.nvidia
 
       - name: Push the nvidia variant to GHCR
-        id: push-to-registry
+        id: push-to-registry-nvidia
         uses: redhat-actions/push-to-registry@v2
         with:
           image: ${{ steps.buildah-build-nvidia.outputs.image }}
