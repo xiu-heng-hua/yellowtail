@@ -29,6 +29,6 @@ dnf config-manager addrepo --from-repofile=https://pkgs.tailscale.com/stable/fed
 curl -o /etc/flatpak/remotes.d/flathub.flatpakrepo \
     https://dl.flathub.org/repo/flathub.flatpakrepo
 
-dnf install code just steam tailscale
+dnf install code gnome-tweaks just steam tailscale
 
 sudo systemctl enable tailscaled
