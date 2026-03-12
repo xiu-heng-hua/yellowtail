@@ -1,4 +1,4 @@
-name: Build and Push the Container Image
+name: Build and Push the Container Images
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Build and push the container image
+    name: Build and push the container images
     runs-on: ubuntu-latest
 
     steps:
@@ -19,7 +19,7 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v6
 
-      - name: Build the image using Buildah
+      - name: Build the main image using Buildah
         id: buildah-build
         uses: redhat-actions/buildah-build@v2
         with:
@@ -28,12 +28,31 @@ jobs:
           containerfiles: |
             ./Containerfile
 
-      - name: Push the image to GHCR
+      - name: Push the main image to GHCR
         id: push-to-registry
         uses: redhat-actions/push-to-registry@v2
         with:
           image: ${{ steps.buildah-build.outputs.image }}
           tags: ${{ steps.buildah-build.outputs.tags }}
+          registry: ghcr.io/${{ github.repository_owner }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build the nvidia variant using Buildah
+        id: buildah-build-nvidia
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: yellowtail-nvidia
+          tags: latest ${{ env.RELEASE_DATE }}
+          containerfiles: |
+            ./Containerfile.nvidia
+
+      - name: Push the nvidia variant to GHCR
+        id: push-to-registry
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.buildah-build-nvidia.outputs.image }}
+          tags: ${{ steps.buildah-build-nvidia.outputs.tags }}
           registry: ghcr.io/${{ github.repository_owner }}
           username: ${{ github.actor }}
           password: ${{ github.token }}

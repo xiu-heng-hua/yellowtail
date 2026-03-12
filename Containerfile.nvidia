@@ -1,0 +1,21 @@
+ARG FEDORA_VERSION=43
+
+FROM localhost/yellowtail as akmodsbuild
+
+RUN --mount=type=tmpfs,dst=/var/cache \
+    --mount=type=tmpfs,dst=/var/lib/dnf \
+    --mount=type=tmpfs,dst=/var/log \
+    --mount=type=bind,dst=/tmp/build.sh,source=build/akmodsbuild.sh \
+    bash /tmp/build.sh
+
+FROM localhost/yellowtail
+
+COPY --from=akmodsbuild /var/home/akmodsbuild /tmp/akmodsbuild
+
+RUN --mount=type=tmpfs,dst=/var/cache \
+    --mount=type=tmpfs,dst=/var/lib/dnf \
+    --mount=type=tmpfs,dst=/var/log \
+    --mount=type=bind,dst=/tmp/build.sh,source=build/yellowtail-nvidia.sh \
+    bash /tmp/build.sh
+
+RUN bootc container lint
