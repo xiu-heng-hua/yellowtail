@@ -19,6 +19,8 @@ dnf install kernel-devel-matched
 
 dnf versionlock add kernel-devel-matched
 
+dnf swap --allowerasing ffmpeg-free ffmpeg
+
 rpm --import \
     https://packages.microsoft.com/keys/microsoft.asc
 
