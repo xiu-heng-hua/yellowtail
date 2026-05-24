@@ -33,10 +33,9 @@ curl -o /etc/flatpak/remotes.d/flathub.flatpakrepo \
 
 dnf install \
     code \
-    freerdp \
     gnome-tweaks \
     just \
-    podman-compose \
+    libvirt \
     steam \
     tailscale
 
