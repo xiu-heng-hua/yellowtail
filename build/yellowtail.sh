@@ -35,8 +35,8 @@ dnf install \
     code \
     gnome-tweaks \
     just \
-    libvirt \
     steam \
-    tailscale
+    tailscale \
+    virt-manager
 
 sudo systemctl enable tailscaled
