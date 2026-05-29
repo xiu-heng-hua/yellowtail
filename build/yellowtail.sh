@@ -32,6 +32,8 @@ curl -o /etc/flatpak/remotes.d/flathub.flatpakrepo \
     https://dl.flathub.org/repo/flathub.flatpakrepo
 
 dnf install \
+    cockpit \
+    cockpit-machines \
     code \
     gnome-tweaks \
     just \
