@@ -21,6 +21,8 @@ dnf versionlock add kernel-devel-matched
 
 dnf swap --allowerasing ffmpeg-free ffmpeg
 
+echo -e "[claude-code]\nname=Claude Code\nbaseurl=https://downloads.claude.ai/claude-code/rpm/stable\nenabled=1\ngpgcheck=1\ngpgkey=https://downloads.claude.ai/keys/claude-code.asc" > /etc/yum.repos.d/claude-code.repo
+
 rpm --import \
     https://packages.microsoft.com/keys/microsoft.asc
 
@@ -32,6 +34,7 @@ curl -o /etc/flatpak/remotes.d/flathub.flatpakrepo \
     https://dl.flathub.org/repo/flathub.flatpakrepo
 
 dnf install \
+    claude-code \
     cockpit \
     cockpit-machines \
     code \
