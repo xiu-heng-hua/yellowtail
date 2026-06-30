@@ -38,8 +38,10 @@ dnf install \
     cockpit \
     cockpit-machines \
     code \
+    gh \
     gnome-tweaks \
     just \
+    rustup \
     steam \
     tailscale
 
