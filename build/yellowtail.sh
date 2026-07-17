@@ -15,6 +15,8 @@ dnf install \
     https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA_VERSION}.noarch.rpm \
     https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA_VERSION}.noarch.rpm
 
+dnf install --nogpgcheck --repofrompath 'terra,https://repos.fyralabs.com/terra$releasever' terra-release
+
 dnf install kernel-devel-matched
 
 dnf versionlock add kernel-devel-matched
@@ -39,6 +41,7 @@ dnf install \
     cockpit-machines \
     code \
     gh \
+    ghostty \
     gnome-tweaks \
     just \
     rustup \
