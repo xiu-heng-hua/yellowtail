@@ -43,6 +43,7 @@ dnf install \
     gh \
     ghostty \
     gnome-tweaks \
+    ibus-mozc \
     just \
     rustup \
     steam \
