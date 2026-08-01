@@ -117,8 +117,11 @@ Published images are signed with [cosign](https://github.com/sigstore/cosign).
 Verify a pull against the `cosign.pub` in this repository:
 
 ```sh
-cosign verify --key cosign.pub ghcr.io/xiu-heng-hua/yellowtail:latest
+cosign verify --key cosign.pub --new-bundle-format ghcr.io/xiu-heng-hua/yellowtail:latest
 ```
+
+Signatures are attached as Sigstore bundles rather than legacy `.sig` tags, so
+this needs cosign 2.6 or newer and the `--new-bundle-format` flag.
 
 Rebasing still uses the `ostree-unverified-registry:` transport shown above.
 rpm-ostree only checks a signature when the image itself carries a matching
