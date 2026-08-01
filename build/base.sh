@@ -49,4 +49,4 @@ dnf install \
     steam \
     tailscale
 
-sudo systemctl enable tailscaled
+systemctl enable tailscaled

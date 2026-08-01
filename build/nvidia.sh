@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-dnf --setopt=localpkg_gpgcheck=0 install /tmp/akmodsbuild/*.rpm
+dnf --setopt=localpkg_gpgcheck=0 install /tmp/nvidia-kmod/*.rpm
 
 cat > /usr/lib/bootc/kargs.d/kmod-nvidia-blacklist.toml <<EOF
 kargs = [

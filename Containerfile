@@ -7,7 +7,7 @@ ARG FEDORA_VERSION
 RUN --mount=type=tmpfs,dst=/var/cache \
     --mount=type=tmpfs,dst=/var/lib/dnf \
     --mount=type=tmpfs,dst=/var/log \
-    --mount=type=bind,dst=/tmp/build.sh,source=build/yellowtail.sh \
+    --mount=type=bind,dst=/tmp/build.sh,source=build/base.sh \
     bash /tmp/build.sh
 
 RUN bootc container lint

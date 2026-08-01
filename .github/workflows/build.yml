@@ -2,57 +2,139 @@ name: Build and Push the Container Images
 
 on:
   push:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
   workflow_dispatch:
   schedule:
     - cron: "0 0 * * *"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build and push the container images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      SIGNING_ENABLED: ${{ secrets.COSIGN_PRIVATE_KEY != '' }}
 
     steps:
       - name: Prepare the environment
         run: |
-          echo "RELEASE_DATE=$(date --rfc-3339=date)" >> ${GITHUB_ENV}
+          echo "BUILD_DATE=$(date --rfc-3339=date)" >> ${GITHUB_ENV}
+          echo "REGISTRY=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> ${GITHUB_ENV}
 
       - name: Check out the repository
         uses: actions/checkout@v6
 
-      - name: Build the main image using Buildah
-        id: buildah-build
-        uses: redhat-actions/buildah-build@v2
+      - name: Reclaim disk space on the runner
+        run: sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache
+
+      - name: Build the main image
+        run: |
+          sudo buildah build \
+            --file Containerfile \
+            --tag yellowtail \
+            .
+
+      - name: Build the nvidia variant
+        run: |
+          sudo buildah build \
+            --file Containerfile.nvidia \
+            --tag yellowtail-nvidia \
+            .
+
+      - name: Log in to GHCR
+        uses: redhat-actions/podman-login@v2
         with:
-          image: yellowtail
-          tags: latest ${{ env.RELEASE_DATE }}
-          containerfiles: |
-            ./Containerfile
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Rechunk the main image
+        id: rechunk-main
+        uses: hhd-dev/rechunk@v1.2.4
+        with:
+          ref: localhost/yellowtail
+          prev-ref: ${{ env.REGISTRY }}/yellowtail:latest
+          version: ${{ env.BUILD_DATE }}
+          revision: ${{ github.sha }}
+          labels: |
+            org.opencontainers.image.title=yellowtail
+            org.opencontainers.image.description=Fedora Silverblue with a custom toolset baked in.
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
 
       - name: Push the main image to GHCR
-        id: push-to-registry
-        uses: redhat-actions/push-to-registry@v2
-        with:
-          image: ${{ steps.buildah-build.outputs.image }}
-          tags: ${{ steps.buildah-build.outputs.tags }}
-          registry: ghcr.io/${{ github.repository_owner }}
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+        id: push-main
+        env:
+          REF: ${{ steps.rechunk-main.outputs.ref }}
+        run: |
+          set -euo pipefail
+          for tag in latest "${BUILD_DATE}"; do
+            skopeo copy \
+              --digestfile "${RUNNER_TEMP}/digest-main" \
+              "${REF}" \
+              "docker://${REGISTRY}/yellowtail:${tag}"
+          done
+          echo "digest=$(cat ${RUNNER_TEMP}/digest-main)" >> ${GITHUB_OUTPUT}
 
-      - name: Build the nvidia variant using Buildah
-        id: buildah-build-nvidia
-        uses: redhat-actions/buildah-build@v2
+      - name: Discard the rechunked main image
+        run: sudo rm -rf "${{ steps.rechunk-main.outputs.location }}"
+
+      - name: Rechunk the nvidia variant
+        id: rechunk-nvidia
+        uses: hhd-dev/rechunk@v1.2.4
         with:
-          image: yellowtail-nvidia
-          tags: latest ${{ env.RELEASE_DATE }}
-          containerfiles: |
-            ./Containerfile.nvidia
+          ref: localhost/yellowtail-nvidia
+          prev-ref: ${{ env.REGISTRY }}/yellowtail-nvidia:latest
+          version: ${{ env.BUILD_DATE }}
+          revision: ${{ github.sha }}
+          labels: |
+            org.opencontainers.image.title=yellowtail-nvidia
+            org.opencontainers.image.description=Fedora Silverblue with the proprietary NVIDIA driver and a custom toolset baked in.
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
 
       - name: Push the nvidia variant to GHCR
-        id: push-to-registry-nvidia
-        uses: redhat-actions/push-to-registry@v2
-        with:
-          image: ${{ steps.buildah-build-nvidia.outputs.image }}
-          tags: ${{ steps.buildah-build-nvidia.outputs.tags }}
-          registry: ghcr.io/${{ github.repository_owner }}
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+        id: push-nvidia
+        env:
+          REF: ${{ steps.rechunk-nvidia.outputs.ref }}
+        run: |
+          set -euo pipefail
+          for tag in latest "${BUILD_DATE}"; do
+            skopeo copy \
+              --digestfile "${RUNNER_TEMP}/digest-nvidia" \
+              "${REF}" \
+              "docker://${REGISTRY}/yellowtail-nvidia:${tag}"
+          done
+          echo "digest=$(cat ${RUNNER_TEMP}/digest-nvidia)" >> ${GITHUB_OUTPUT}
+
+      - name: Discard the rechunked nvidia variant
+        run: sudo rm -rf "${{ steps.rechunk-nvidia.outputs.location }}"
+
+      - name: Install Cosign
+        if: env.SIGNING_ENABLED == 'true'
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign the container images
+        if: env.SIGNING_ENABLED == 'true'
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          DIGEST: ${{ steps.push-main.outputs.digest }}
+          DIGEST_NVIDIA: ${{ steps.push-nvidia.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign -y --key env://COSIGN_PRIVATE_KEY "${REGISTRY}/yellowtail@${DIGEST}"
+          cosign sign -y --key env://COSIGN_PRIVATE_KEY "${REGISTRY}/yellowtail-nvidia@${DIGEST_NVIDIA}"
