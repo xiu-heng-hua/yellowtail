@@ -4,6 +4,8 @@ FROM quay.io/fedora/fedora-silverblue:${FEDORA_VERSION}
 
 ARG FEDORA_VERSION
 
+COPY --chmod=644 xkb/custom /usr/share/X11/xkb/symbols/custom
+
 RUN --mount=type=tmpfs,dst=/var/cache \
     --mount=type=tmpfs,dst=/var/lib/dnf \
     --mount=type=tmpfs,dst=/var/log \

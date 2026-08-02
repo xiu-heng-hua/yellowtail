@@ -32,12 +32,22 @@ On top of stock Silverblue:
 
 - **Repositories** — RPM Fusion (free and nonfree), [Terra](https://terra.fyralabs.com/),
   Flathub, and the vendor repositories for the packages below.
-- **Desktop** — [Ghostty](https://ghostty.org/), GNOME Tweaks, `ibus-mozc` for
-  Japanese input.
+- **Desktop** — [Ghostty](https://ghostty.org/), `ibus-mozc` for Japanese input,
+  and JetBrains Mono.
+- **Keyboard** — a custom French (QWERTY) layout. The layout itself is part of
+  the image, at `/usr/share/X11/xkb/symbols/custom`, next to the layouts Fedora
+  ships. It is already selected as the default alongside Mozc, and the login
+  screen uses it too, with Caps Lock and Ctrl swapped in both. Nothing needs
+  setting up after installing.
+
+  GNOME Settings lists it as "A user-defined custom Layout": `custom` is the
+  name `xkeyboard-config` reserves for exactly this, so nothing has to be
+  registered for the layout to be selectable. Change either default with
+  `gsettings` on `org.gnome.desktop.input-sources`; `gsettings reset` restores
+  them, since they are now the defaults.
 - **Development** — [Claude Code](https://claude.com/claude-code), Visual Studio
-  Code, the GitHub CLI, [`just`](https://just.systems/), `rustup`.
-- **Virtualisation and remote access** — Cockpit with the machines plugin,
-  Tailscale (`tailscaled` is enabled and starts on first boot).
+  Code, the GitHub CLI, [`just`](https://just.systems/), `rustup`, Node.js 24
+  and [`uv`](https://docs.astral.sh/uv/).
 - **Gaming and media** — Steam, and full `ffmpeg` swapped in for `ffmpeg-free`
   so hardware and patent-encumbered codecs work.
 
@@ -179,7 +189,8 @@ also a valid bootable container.
 ```
 Containerfile           the main image
 Containerfile.nvidia    the NVIDIA variant, built from the main image
-build/base.sh           repositories, packages and services for the main image
+xkb/custom              the French (QWERTY) keyboard layout the image defaults to
+build/base.sh           repositories, packages and desktop defaults for the main image
 build/nvidia-kmod.sh    builds nvidia-kmod against the image's kernel
 build/nvidia.sh         installs the built driver and blacklists nouveau
 .github/workflows/build.yml
