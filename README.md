@@ -24,7 +24,11 @@ Every build publishes two tags:
 | Tag | Example | What it is for |
 | --- | --- | --- |
 | `latest` | `latest` | What you normally want — follows the nightly build. |
-| Build date | `2026-08-01` | Pin to, or roll back to, a specific day. |
+| Build date | `2026-08-01` | Pin to, or roll back to, a particular day's build. |
+
+A dated tag is the UTC day the build ran, so it names the last build of that
+day: pushing to `main` on a day the nightly already ran moves the tag onto the
+newer image. Today's can still move that way; any earlier one is settled.
 
 ## What is inside
 
@@ -121,7 +125,7 @@ sudo rpm-ostree rebase fedora:fedora/44/x86_64/silverblue
 sudo systemctl reboot
 ```
 
-To pin a specific day rather than tracking `latest`, rebase onto a dated tag:
+To follow one day's build rather than `latest`, rebase onto a dated tag:
 
 ```sh
 sudo rpm-ostree rebase ostree-unverified-registry:ghcr.io/xiu-heng-hua/yellowtail:2026-08-01
