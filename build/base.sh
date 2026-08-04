@@ -65,6 +65,7 @@ packages=(
     ghostty
     ibus-mozc
     jetbrains-mono-fonts
+    xdg-terminal-exec
     # Development
     claude-code
     code
@@ -78,6 +79,13 @@ packages=(
 )
 
 dnf install "${packages[@]}"
+
+# Ghostty replaces the terminal Silverblue ships. GLib picks the terminal for a
+# Terminal=true desktop entry off a fixed list that names ptyxis and not
+# ghostty, so xdg-terminal-exec above stands in: it is the first name on that
+# list, and with ptyxis gone it falls back to the sole TerminalEmulator entry
+# left. Nothing requires ptyxis, so this removes that package and nothing else.
+dnf remove ptyxis
 
 # Desktop defaults
 

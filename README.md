@@ -32,8 +32,14 @@ On top of stock Silverblue:
 
 - **Repositories** — RPM Fusion (free and nonfree), [Terra](https://terra.fyralabs.com/),
   Flathub, and the vendor repositories for the packages below.
-- **Desktop** — [Ghostty](https://ghostty.org/), `ibus-mozc` for Japanese input,
-  and JetBrains Mono.
+- **Desktop** — [Ghostty](https://ghostty.org/) as the one terminal, in place of
+  the Ptyxis that Silverblue ships; `ibus-mozc` for Japanese input, and JetBrains
+  Mono.
+
+  GLib picks the terminal for a `Terminal=true` desktop entry off a fixed list
+  that names Ptyxis and not Ghostty, so the image also carries
+  `xdg-terminal-exec` — the first name on that list, and the one that then goes
+  looking for whichever terminal is actually installed.
 - **Keyboard** — a custom French (QWERTY) layout. The layout itself is part of
   the image, at `/usr/share/X11/xkb/symbols/custom`, next to the layouts Fedora
   ships. It is already selected as the default alongside Mozc, and the login
