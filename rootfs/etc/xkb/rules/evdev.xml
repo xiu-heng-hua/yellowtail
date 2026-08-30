@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xkbConfigRegistry version="1.1">
+  <layoutList>
+    <layout>
+      <configItem>
+        <name>fr-qwerty</name>
+        <shortDescription>fr</shortDescription>
+        <description>French (QWERTY)</description>
+        <countryList><iso3166Id>FR</iso3166Id></countryList>
+        <languageList><iso639Id>fra</iso639Id></languageList>
+      </configItem>
+    </layout>
+  </layoutList>
+</xkbConfigRegistry>

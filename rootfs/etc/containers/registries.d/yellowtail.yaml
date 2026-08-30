@@ -1,0 +1,3 @@
+docker:
+    ghcr.io/xiu-heng-hua/yellowtail:
+        use-sigstore-attachments: true

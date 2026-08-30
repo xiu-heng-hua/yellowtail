@@ -1,0 +1,71 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/yellowtail
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Reclaim disk space on the runner
+        run: sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache
+
+      - name: Take podman off fuse-overlayfs
+        run: |
+          sudo sed -i -e '/mount_program/d' -e '/^mountopt/d' /etc/containers/storage.conf
+          sudo rm -rf /var/lib/containers/storage
+
+      - name: Log in to GHCR
+        run: |
+          mkdir -p ~/.docker
+          echo "${{ github.token }}" | podman login ghcr.io --username ${{ github.actor }} --password-stdin --authfile ~/.docker/config.json
+
+      - name: Build the image
+        run: |
+          sudo podman build \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --tag localhost/yellowtail .
+
+      - name: Check the rpmdb survived the build
+        run: |
+          sudo podman run --rm localhost/yellowtail python3 -c "import sqlite3, sys; c = sqlite3.connect('file:/usr/share/rpm/rpmdb.sqlite?mode=ro', uri=True); n = c.execute('select count(*) from Packages').fetchone()[0]; r = c.execute('pragma integrity_check').fetchall(); print(n, 'packages, integrity', r); sys.exit(0 if r == [('ok',)] and n > 1500 else 1)"
+
+      - name: Push and sign
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSPHRASE: ${{ secrets.SIGNING_PASSPHRASE }}
+        run: |
+          trap 'rm -f signing.key signing.pass' EXIT
+          printf '%s' "${SIGNING_KEY}" > signing.key
+          printf '%s' "${SIGNING_PASSPHRASE}" > signing.pass
+          for tag in "$(date --rfc-3339=date)" latest; do
+            sudo skopeo copy \
+              --authfile ~/.docker/config.json \
+              --registries.d rootfs/etc/containers/registries.d \
+              --sign-by-sigstore-private-key signing.key \
+              --sign-passphrase-file signing.pass \
+              containers-storage:localhost/yellowtail \
+              "docker://${IMAGE}:${tag}"
+          done
