@@ -655,11 +655,15 @@ bug][fuse-459]. The database is sound at the end of [`build.sh`][build] and
 broken when read back from the committed image.
 
 [`build.yml`][workflow] therefore deletes `mount_program`, along with the
-`mountopt` line whose `fsync=0` means nothing to the kernel's overlayfs. It also
-removes `/var/lib/containers/storage`, because podman records its options when
-it first initialises the store: editing the file after any podman command has
-run changes nothing at all, which is easy to miss and looks exactly like the
-change having no effect.
+`mountopt` line whose `fsync=0` means nothing to the kernel's overlayfs, from
+whichever of podman's two configuration files the runner has: the one under
+`/etc`, which the runner image shipped until early September 2026 and then
+stopped, and the package's own under `/usr/share`. A file that is not there is
+left alone; editing it unconditionally is what took the nightly build down
+for four days. The step also removes `/var/lib/containers/storage`, because
+podman records its options when it first initialises the store: editing the
+file after any podman command has run changes nothing at all, which is easy to
+miss and looks exactly like the change having no effect.
 
 Reading the database back and failing on `pragma integrity_check` is the step
 after the build. Nothing else in the pipeline reads it, so without that check a

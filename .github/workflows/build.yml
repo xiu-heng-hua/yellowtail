@@ -34,7 +34,11 @@ jobs:
 
       - name: Take podman off fuse-overlayfs
         run: |
-          sudo sed -i -e '/mount_program/d' -e '/^mountopt/d' /etc/containers/storage.conf
+          for conf in /etc/containers/storage.conf /usr/share/containers/storage.conf; do
+            if [ -f "$conf" ]; then
+              sudo sed -i -e '/mount_program/d' -e '/^mountopt/d' "$conf"
+            fi
+          done
           sudo rm -rf /var/lib/containers/storage
 
       - name: Log in to GHCR
