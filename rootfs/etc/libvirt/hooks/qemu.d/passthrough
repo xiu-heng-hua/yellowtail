@@ -1,0 +1,243 @@
+#!/usr/bin/bash
+
+set -Eeuo pipefail
+PATH=/usr/sbin:/usr/bin
+
+desktop=display-manager.service
+stub=vfio-pci
+amd=0x1002
+amd_bar2=3
+
+machine=${1-}
+state=/run/libvirt/hooks/passthrough/$machine
+devices=()
+
+log() {
+    logger --tag passthrough -- "$machine: $*" || true
+    echo "passthrough: $machine: $*" >&2
+}
+
+sysfs() {
+    log "$2 <- $1"
+    echo "$1" > "$2"
+}
+
+unmanaged_pci_devices() {
+    python3 -c '
+import sys, xml.etree.ElementTree as ET
+for h in ET.parse(sys.stdin).getroot().iterfind("devices/hostdev"):
+    if h.get("mode", "subsystem") == "subsystem" and h.get("type") == "pci" and h.get("managed") != "yes":
+        a = h.find("source/address")
+        print("%04x:%02x:%02x.%x" % tuple(int(a.get(k, "0"), 16) for k in ("domain", "bus", "slot", "function")))
+'
+}
+
+driver_of() {
+    local link="/sys/bus/pci/devices/$1/driver"
+    if [[ -e $link ]]; then
+        basename "$(readlink "$link")"
+    fi
+}
+
+detach() {
+    local driver
+    driver=$(driver_of "$1")
+    [[ -n $driver ]] || return 0
+    log "detaching $driver from $1"
+    echo "$1" > "/sys/bus/pci/devices/$1/driver/unbind"
+}
+
+attach() {
+    if [[ $(driver_of "$1") == "$2" ]]; then
+        return 0
+    fi
+    log "attaching $2 to $1"
+    echo "$2" > "/sys/bus/pci/devices/$1/driver_override"
+    echo "$1" > "/sys/bus/pci/drivers/$2/bind"
+}
+
+release_override() {
+    echo '' > "/sys/bus/pci/devices/$1/driver_override"
+}
+
+hold_power() {
+    sysfs 0 "/sys/bus/pci/devices/$1/d3cold_allowed"
+    sysfs on "/sys/bus/pci/devices/$1/power/control"
+}
+
+restore_power() {
+    sysfs 1 "/sys/bus/pci/devices/$1/d3cold_allowed"
+    sysfs auto "/sys/bus/pci/devices/$1/power/control"
+}
+
+bar_size() {
+    local start end size n=0
+    read -r start end _ < <(sed -n "$(( $2 + 1 ))p" "/sys/bus/pci/devices/$1/resource")
+    size=$(( end - start + 1 ))
+    while (( (1 << n) * 1024 * 1024 < size )); do
+        n=$((n + 1))
+    done
+    echo "$n"
+}
+
+shrink_bar2() {
+    local resize="/sys/bus/pci/devices/$1/resource2_resize" size
+    [[ $(< "/sys/bus/pci/devices/$1/vendor") == "$amd" && -f $resize ]] || return 0
+    size=$(bar_size "$1" 2)
+    (( size > amd_bar2 )) || return 0
+    sysfs "$amd_bar2" "$resize"
+    echo "$size"
+}
+
+holders() {
+    local nodes=() dev node pid fd target
+    for dev in "${devices[@]}"; do
+        for node in "/sys/bus/pci/devices/$dev/drm/"{card,renderD}*; do
+            [[ -e $node ]] && nodes+=("/dev/dri/$(basename "$node")")
+        done
+    done
+    (( ${#nodes[@]} )) || return 0
+    for pid in /proc/[0-9]*; do
+        pid=${pid#/proc/}
+        [[ $pid == "$$" || $pid == 1 ]] && continue
+        for fd in "/proc/$pid/fd/"*; do
+            target=$(readlink "$fd" 2>/dev/null) || continue
+            for node in "${nodes[@]}"; do
+                if [[ $target == "$node" ]]; then
+                    echo "$pid"
+                    continue 3
+                fi
+            done
+        done
+    done
+    return 0
+}
+
+wait_for_holders() {
+    local waited=0 pids
+    while mapfile -t pids < <(holders) && (( ${#pids[@]} )); do
+        if (( waited >= 10 )); then
+            log "still holding a device, terminating: $(ps -o pid=,comm= -p "$(IFS=,; echo "${pids[*]}")" | tr -s ' \n' ' ')"
+            kill -TERM "${pids[@]}" 2>/dev/null || true
+            sleep 3
+            mapfile -t pids < <(holders)
+            (( ${#pids[@]} == 0 )) || kill -KILL "${pids[@]}" 2>/dev/null || true
+            sleep 1
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+}
+
+stop_desktop() {
+    local pids
+    mapfile -t pids < <(holders)
+    (( ${#pids[@]} )) || return 0
+    log "stopping the desktop"
+    systemctl stop "$desktop"
+    touch "$state/desktop"
+    wait_for_holders
+}
+
+console_off() {
+    local con
+    for con in /sys/class/vtconsole/vtcon*; do
+        grep -q 'frame buffer' "$con/name" || continue
+        [[ $(< "$con/bind") == 1 ]] || continue
+        sysfs 0 "$con/bind"
+        echo "$con" >> "$state/consoles"
+    done
+    return 0
+}
+
+console_on() {
+    [[ -f $state/consoles ]] || return 0
+    local con
+    while read -r con; do
+        sysfs 1 "$con/bind" || true
+    done < "$state/consoles"
+}
+
+prepare() {
+    trap undo ERR
+    rm -rf "$state"
+    mkdir -p "$state"
+
+    stop_desktop
+    console_off
+
+    local dev driver bar2
+    for dev in "${devices[@]}"; do
+        driver=$(driver_of "$dev")
+        if [[ $driver == "$stub" ]]; then
+            continue
+        fi
+        hold_power "$dev"
+        detach "$dev"
+        bar2=$(shrink_bar2 "$dev")
+        echo "$dev ${driver:--} ${bar2:--}" >> "$state/devices"
+    done
+
+    modprobe "$stub"
+    for dev in "${devices[@]}"; do
+        attach "$dev" "$stub"
+    done
+    log "ready"
+}
+
+undo() {
+    log "preparing failed, giving back"
+    release
+    exit 1
+}
+
+release() {
+    trap - ERR
+    set +e
+
+    local dev driver bar2 try
+    if [[ -f $state/devices ]]; then
+        while read -r dev driver bar2; do
+            [[ $(driver_of "$dev") == "$stub" ]] && detach "$dev"
+            if [[ $bar2 != - ]]; then
+                sysfs "$bar2" "/sys/bus/pci/devices/$dev/resource2_resize" ||
+                    log "$dev keeps BAR 2 at its reduced size"
+            fi
+            if [[ $driver != - ]]; then
+                for try in 1 2 3 4 5; do
+                    attach "$dev" "$driver" && break
+                    log "$driver did not take $dev back (attempt $try of 5)"
+                    (( try == 3 )) && sysfs 1 "/sys/bus/pci/devices/$dev/reset"
+                    sleep 2
+                done
+            fi
+            release_override "$dev"
+            restore_power "$dev"
+        done < <(tac "$state/devices")
+    fi
+
+    console_on
+    if [[ -f $state/desktop ]]; then
+        log "starting the desktop"
+        systemctl start "$desktop"
+    fi
+    rm -rf "$state"
+}
+
+[[ -n $machine && $machine != - ]] || exit 0
+
+case "${2-} ${3-}" in
+    'prepare begin')
+        list=$(unmanaged_pci_devices)
+        [[ -n $list ]] || exit 0
+        mapfile -t devices <<< "$list"
+        log "taking ${devices[*]}"
+        prepare
+        ;;
+    'release end')
+        [[ -d $state ]] || exit 0
+        log "stopped (${4-}), giving back"
+        release
+        ;;
+esac

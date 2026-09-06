@@ -46,6 +46,10 @@ dnf remove console-setup
 
 glib-compile-schemas /usr/share/glib-2.0/schemas
 
+semodule --noreload --install /usr/share/selinux/packages/yellowtail_virt_hooks.cil
+semanage boolean --noreload --modify --on virt_hooks_unconfined
+rm -rf /etc/selinux/targeted/previous
+
 systemctl enable brew-setup.service brew-update.timer brew-upgrade.timer
 
 python3 -c "

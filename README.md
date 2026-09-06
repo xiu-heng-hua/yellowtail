@@ -1,7 +1,7 @@
 # Yellowtail
 
 A [Fedora Silverblue](https://fedoraproject.org/atomic-desktops/silverblue/)
-image for one x86-64 desktop, built as a [bootc](https://bootc.dev/) bootable
+image for x86-64 desktops, built as a [bootc](https://bootc.dev/) bootable
 container.
 
 Silverblue is image-based: the operating system is one immutable image you boot
@@ -26,6 +26,13 @@ for Japanese input, [virt-manager](https://virt-manager.org/) for virtual
 machines, and full `ffmpeg` in place of `ffmpeg-free`. The package list is in
 [`build.sh`][build]. [Firefox](https://www.mozilla.org/firefox/) comes from the
 base image, with Fedora's start page, pinned tile and default bookmarks removed.
+
+The image also carries what a virtual machine needs to borrow a graphics card:
+a [libvirt hook][hook] that takes any PCI device a machine passes through
+unmanaged away from whatever holds it, the desktop included, when the machine
+starts, and gives it back when the machine stops, and an [SELinux module][cil]
+without which libvirt could not run that hook at all. The machine itself is
+created per computer; see [Windows](#windows).
 
 It also carries a French QWERTY keyboard layout: QWERTY letters, with the
 accented characters on AltGr. [GNOME](https://www.gnome.org/) lists it as
@@ -103,6 +110,108 @@ sudo bootc switch --transport registry ghcr.io/xiu-heng-hua/yellowtail:YYYY-MM-D
 
 Only days a build ran carry a tag; the [package listing][packages] shows which
 ones exist.
+
+## Windows
+
+Some software only exists for Windows, and some of it needs a real graphics
+card behind a real Windows driver. So Windows runs in a virtual machine that is
+given a graphics card for as long as it runs. Where that card is the only one,
+the desktop has to go while Windows has it; Linux keeps running underneath.
+
+The machine belongs to the system libvirt: only that one runs [the hook][hook]
+that does the hand-over, and only it may pass hardware through. virt-manager
+opens it by default, but `virsh` run by a user opens a private one unless told
+otherwise, so every `virsh` command below names it with `-c qemu:///system`.
+Your account has to be in the `libvirt` group, as [described
+below](#virtual-machines-arrive-without-their-state-directories).
+
+1. Create the machine in virt-manager from a Windows 11 installer. virt-manager
+   sets UEFI and adds a TPM when it recognises the installer, and Windows 11
+   refuses to install without them, so a slip there shows itself before
+   anything else. Install Windows through the emulated display. That proves
+   the disk, the network and Windows itself before the card is involved; once
+   the card is, there may be no desktop left to watch a failure on.
+
+2. Shut it down, then edit it with `virsh -c qemu:///system edit NAME`.
+   Everything below goes inside `<devices>`.
+
+   Find the card's PCI address, and that of its audio function, which is the
+   same address ending in `.1`:
+
+   ```sh
+   lspci -Dnn -d ::0300
+   ```
+
+   Add both as host devices, with `managed='no'` so that libvirt leaves the
+   driver work to the hook. For a card at `0000:01:00.0`:
+
+   ```xml
+   <hostdev mode='subsystem' type='pci' managed='no'>
+     <source>
+       <address domain='0x0000' bus='0x01' slot='0x00' function='0x0'/>
+     </source>
+   </hostdev>
+   <hostdev mode='subsystem' type='pci' managed='no'>
+     <source>
+       <address domain='0x0000' bus='0x01' slot='0x00' function='0x1'/>
+     </source>
+   </hostdev>
+   ```
+
+   If the desktop will be gone, give the machine the keyboard and the mouse,
+   since nothing will be left to relay them. They are listed by name under
+   `/dev/input/by-id/`; take the keyboard's `event-kbd` entry and the mouse's
+   `event-mouse` one. QEMU holds them for Windows while the machine runs and
+   lets go when it stops; pressing both Ctrl keys at once hands them to the
+   other side in the meantime:
+
+   ```xml
+   <input type='evdev'>
+     <source dev='/dev/input/by-id/usb-KEYBOARD-event-kbd' grab='all' repeat='on'/>
+   </input>
+   <input type='evdev'>
+     <source dev='/dev/input/by-id/usb-MOUSE-event-mouse'/>
+   </input>
+   ```
+
+   Remove the emulated display: the `graphics` element, the `video` element,
+   and the Spice `channel` and `redirdev` elements that exist only for it.
+   Left in, Windows makes the emulated display its main screen and puts
+   nothing useful on the monitor.
+
+3. Start it with `virsh -c qemu:///system start NAME`. If the desktop was
+   using the card, the terminal that was typed in vanishes with it; that is
+   the hook stopping the login manager, and the start carries on without it.
+   The monitor then shows the firmware, then Windows on its basic display
+   driver. Install the card's driver at that point, once; from then on Windows
+   drives the card itself.
+
+   If the monitor shows nothing at all, not even the firmware, the card's ROM
+   could not be read after the host had used it. Copy it out while the host's
+   driver holds the card, into the directory libvirt keeps for files a machine
+   boots from, which is the one QEMU is allowed to read:
+
+   ```sh
+   sudo sh -c 'cd /sys/bus/pci/devices/0000:01:00.0 && echo 1 > rom && cat rom > /var/lib/libvirt/boot/gpu.rom; echo 0 > rom'
+   ```
+
+   then name it in the first host device, next to its `source`:
+
+   ```xml
+   <rom file='/var/lib/libvirt/boot/gpu.rom'/>
+   ```
+
+4. Shut Windows down from inside Windows, or with
+   `virsh -c qemu:///system shutdown NAME` over `ssh`, which asks Windows the
+   same thing through ACPI. Once the machine has stopped, the hook hands the
+   card back to its driver, and starts the login manager again if it had
+   stopped it.
+
+Never force the machine off, neither with `virsh destroy` nor with
+virt-manager's *Force Off*. The hook still runs and tries to reset the card,
+but the card is reset while its firmware is mid-way through something, and
+usually only a reboot recovers it. `journalctl -t passthrough` shows every
+step the hook took, which is where to look if the desktop does not come back.
 
 ## Verifying the images
 
@@ -320,6 +429,88 @@ make it:
 ```sh
 sudo usermod -aG libvirt "$USER"
 ```
+
+### A passed-through card is taken at start time, from whoever holds it
+
+Software that computes on the GPU wants a real card behind a real Windows
+driver, and nothing that shares a card with the host, be it Wine, a paravirtual
+GPU or a streamed desktop, provides that. Passing a card through means the host
+has to let go of it first.
+
+The usual set-up binds the card to `vfio-pci` at boot, with a kernel argument,
+so that the host never touches it. That needs a second GPU for the desktop, and
+it does not suit every card: AMD's RDNA4 cards, the Radeon RX 9000 series, have
+to be brought up by `amdgpu` after boot, or Windows finds them in a state it
+cannot use. So [the hook][hook] does the hand-over when the machine starts, and
+takes the card from whoever holds it then. When nothing does, because the card
+was bound to `vfio-pci` at boot and another GPU carries the desktop, the
+desktop is left alone. When the desktop holds it, the desktop is stopped: GNOME
+on Wayland opens every GPU it can see and never lets one go, so there is no
+taking a card from a running desktop. Linux stays up underneath either way.
+
+libvirt runs every executable in `/etc/libvirt/hooks/qemu.d/` at each step of
+every machine's life, as root, with the machine's name and the step as
+arguments and the machine's definition on standard input, and waits for it.
+The hook reads the PCI host devices marked `managed='no'` out of that
+definition, so nothing about the hardware is written into the image, and acts
+on two steps. At `prepare`, before libvirt allocates anything, it stops the
+login manager if any process holds one of the devices, detaches each device's
+driver, remembering which, and attaches `vfio-pci`; if any of that fails, it
+undoes what it did and exits non-zero, which makes libvirt refuse to start the
+machine. At `release`, once the machine has stopped, it does the reverse in
+reverse order and starts the login manager again if it had stopped it, and
+nothing on that path stops at an error, since libvirt no longer cares and the
+desktop has to come back regardless. What `prepare` learns for `release` it
+leaves under `/run/libvirt`, which is emptied at boot. The hook never calls
+`virsh`: libvirt is waiting for it, and that would deadlock.
+
+Stopping the login manager ends the graphical session, but its programs take a
+moment to go, and a driver must not be pulled from under one. The hook finds
+them by their open handles to the devices' nodes in `/proc`, gives them ten
+seconds, then terminates them: nothing that outlives the desktop can show
+anything. A text console bound to the card would hold the driver too, and is
+unbound first.
+
+The rest is what the cards want. Every device is kept out of its deepest power
+state while no driver holds it, or it powers down between the two drivers and
+the second one cannot wake it. An AMD card whose second memory region, BAR 2,
+can be resized has it shrunk to 8 MiB before Windows sees it, and the size put
+back afterwards; both are only possible while no driver holds the card. The
+rule is written for RDNA4, whose Windows driver refuses anything larger with
+error 43, and applied to any AMD card that offers the resize, since it is
+undone on the way back. Drivers are chosen with `driver_override` and bound by
+address, and the override is cleared afterwards by writing a lone newline,
+because a write of nothing at all never reaches the kernel. On the way back
+each driver is given five tries, with a reset of the device after the third,
+before the desktop is started anyway. And the host devices carry
+`managed='no'`: with `managed='yes'`, libvirt would hand the card back by
+itself, by asking the kernel to pick a driver, before the hook can restore the
+card's memory region and power settings, and by a route that does not always
+work.
+
+### SELinux does not let libvirt run QEMU hooks
+
+Fedora's policy labels hook scripts `virt_hook_t` and has a boolean,
+`virt_hooks_unconfined`, described as "allow virt daemons run unconfined
+hooks". But the rules behind the boolean only name `virtnetworkd`, the network
+daemon. QEMU machines are run by `virtqemud`, which is allowed to read a
+`virt_hook_t` file and not to execute it, boolean or no boolean, so with
+SELinux enforcing a QEMU hook never starts, and neither does the machine.
+
+[`yellowtail_virt_hooks.cil`][cil] adds for `virtqemud` exactly the rules the
+policy has for `virtnetworkd`, under the same boolean: leave to execute the
+script, and to transition into `virt_hook_unconfined_t`, the unconfined domain
+the policy already defines for hooks. Unconfined is what the hook needs, since
+it stops and starts a systemd unit and rebinds drivers through sysfs.
+[`build.sh`][build] installs the module and turns the boolean on.
+
+Both commands run with `--noreload`. They normally rebuild the policy and load
+it into the running kernel, and a container build has no kernel to load it
+into. The rebuild is what matters: on an image-based system the policy store
+lives under `/etc/selinux` (on the running machine, `/var/lib/selinux` is a
+link to it), precisely so that a rebuilt policy ships with the image and is
+what the machine boots with. `libsemanage` also keeps a copy of the previous
+store beside it, seventeen megabytes no build needs, and that is removed.
 
 ### Desktop defaults are schema defaults, not anyone's dconf
 
@@ -628,6 +819,7 @@ editing the `FROM` line.
 [MIT](LICENSE)
 
 [build]: build.sh
+[cil]: rootfs/usr/share/selinux/packages/yellowtail_virt_hooks.cil
 [claude-repo]: rootfs/etc/yum.repos.d/claude-code.repo
 [containerfile]: Containerfile
 [ff-policies]: rootfs/usr/lib64/firefox/distribution/policies.json
@@ -635,6 +827,7 @@ editing the `FROM` line.
 [flathub]: rootfs/usr/share/flatpak/remotes.d/flathub.flatpakrepo
 [fuse-459]: https://github.com/containers/fuse-overlayfs/issues/459
 [gschema]: rootfs/usr/share/glib-2.0/schemas/zz-yellowtail.gschema.override
+[hook]: rootfs/etc/libvirt/hooks/qemu.d/passthrough
 [install-cfg]: rootfs/usr/lib/bootc/install
 [packages]: https://github.com/xiu-heng-hua/yellowtail/pkgs/container/yellowtail
 [policy]: rootfs/etc/containers/policy.json

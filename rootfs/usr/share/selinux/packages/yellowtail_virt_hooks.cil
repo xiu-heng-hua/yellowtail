@@ -1,0 +1,6 @@
+(booleanif virt_hooks_unconfined
+    (true
+        (allow virtqemud_t shell_exec_t (file (execute execute_no_trans map)))
+        (allow virtqemud_t virt_hook_t (file (getattr open read execute map)))
+        (allow virtqemud_t virt_hook_unconfined_t (process (transition)))
+        (typetransition virtqemud_t virt_hook_t process virt_hook_unconfined_t)))
