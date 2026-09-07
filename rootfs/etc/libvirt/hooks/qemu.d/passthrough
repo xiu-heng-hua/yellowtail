@@ -151,6 +151,10 @@ console_on() {
 
 prepare() {
     trap undo ERR
+    if [[ -f $state/devices ]]; then
+        log "already prepared"
+        return 0
+    fi
     rm -rf "$state"
     mkdir -p "$state"
 
