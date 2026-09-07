@@ -1,0 +1,25 @@
+#!/usr/bin/bash
+
+set -euo pipefail
+
+machine=windows
+uri=qemu:///system
+
+case ${1-} in
+    start)
+        exec virsh -c "$uri" start "$machine"
+        ;;
+    stop)
+        exec virsh -c "$uri" shutdown "$machine"
+        ;;
+    kill)
+        exec virsh -c "$uri" destroy "$machine"
+        ;;
+    status)
+        exec virsh -c "$uri" domstate "$machine"
+        ;;
+    *)
+        echo "usage: windows start|stop|kill|status" >&2
+        exit 1
+        ;;
+esac

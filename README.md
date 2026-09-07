@@ -31,8 +31,9 @@ The image also carries what a virtual machine needs to borrow a graphics card:
 a [libvirt hook][hook] that takes any PCI device a machine passes through
 unmanaged away from whatever holds it, the desktop included, when the machine
 starts, and gives it back when the machine stops, and an [SELinux module][cil]
-without which libvirt could not run that hook at all. The machine itself is
-created per computer; see [Windows](#windows).
+without which libvirt could not run that hook at all, and a [`windows`
+command][windows-cmd] that starts, stops and reports on the machine. The
+machine itself is created per computer; see [Windows](#windows).
 
 It also carries a French QWERTY keyboard layout: QWERTY letters, with the
 accented characters on AltGr. [GNOME](https://www.gnome.org/) lists it as
@@ -123,18 +124,20 @@ the desktop comes straight back on that.
 The machine belongs to the system libvirt: only that one runs [the hook][hook]
 that does the hand-over, and only it may pass hardware through. virt-manager
 opens it by default, but `virsh` run by a user opens a private one unless told
-otherwise, so every `virsh` command below names it with `-c qemu:///system`.
-Your account has to be in the `libvirt` group, as [described
+otherwise, so the `virsh` command below names it with `-c qemu:///system`, and
+so does the [`windows` command][windows-cmd] that drives the machine once it
+exists. Your account has to be in the `libvirt` group, as [described
 below](#virtual-machines-arrive-without-their-state-directories).
 
-1. Create the machine in virt-manager from a Windows 11 installer. virt-manager
+1. Create the machine in virt-manager from a Windows 11 installer, and name it
+   `windows`, which is the name the command expects. virt-manager
    sets UEFI and adds a TPM when it recognises the installer, and Windows 11
    refuses to install without them, so a slip there shows itself before
    anything else. Install Windows through the emulated display. That proves
    the disk, the network and Windows itself before the card is involved; once
    the card is, there may be no desktop left to watch a failure on.
 
-2. Shut it down, then edit it with `virsh -c qemu:///system edit NAME`.
+2. Shut it down, then edit it with `virsh -c qemu:///system edit windows`.
 
    First, make the machine report some hypervisor other than Hyper-V. libvirt
    advertises Hyper-V to every Windows guest, because Windows runs better with
@@ -190,9 +193,9 @@ below](#virtual-machines-arrive-without-their-state-directories).
    Left in, Windows makes the emulated display its main screen and puts
    nothing useful on the monitor.
 
-3. Start it with `virsh -c qemu:///system start NAME`. The terminal that was
-   typed in vanishes with the desktop; that is the hook stopping the login
-   manager, and the start carries on without it. The monitor then shows the
+3. Start it with `windows start`. The terminal that was typed in vanishes with
+   the desktop; that is the hook stopping the login manager, and the start
+   carries on without it. The monitor then shows the
    firmware, then Windows on its basic display driver. Install the card
    maker's own driver package at that point, once; from then on Windows drives
    the card itself, with the card's full memory aperture. Do this after the
@@ -206,14 +209,14 @@ below](#virtual-machines-arrive-without-their-state-directories).
    means the firmware's Kernel DMA Protection is on, and it refuses every
    device on the first PCI buses to VFIO until that is turned off in the BIOS.
 
-4. Shut Windows down from inside Windows, or with
-   `virsh -c qemu:///system shutdown NAME`, which asks Windows the same thing
-   through ACPI. Once the machine has stopped, the hook hands the card back to
-   its driver and restarts the login manager, so the card is the desktop's
-   again. A machine that no longer answers can be stopped with `virsh
-   destroy`; the hook gives the card back all the same, with a reset if it has
-   to, and that has recovered cleanly here, but for Windows it is a power cut.
-   `journalctl -t passthrough` shows every step the hook took.
+4. Shut Windows down from inside Windows, or with `windows stop`, which asks
+   Windows the same thing through ACPI. Once the machine has stopped, the hook
+   hands the card back to its driver and restarts the login manager, so the
+   card is the desktop's again. A machine that no longer answers can be
+   stopped with `windows kill`; the hook gives the card back all the same,
+   with a reset if it has to, and that has recovered cleanly here, but for
+   Windows it is a power cut. `windows status` says whether the machine is
+   running, and `journalctl -t passthrough` shows every step the hook took.
 
 ## Verifying the images
 
@@ -848,6 +851,7 @@ editing the `FROM` line.
 [registries]: rootfs/etc/containers/registries.d/yellowtail.yaml
 [tmpfiles]: rootfs/usr/lib/tmpfiles.d/yellowtail.conf
 [vconsole]: rootfs/etc/vconsole.conf
+[windows-cmd]: rootfs/usr/bin/windows
 [workflow]: .github/workflows/build.yml
 [xkb-registry]: rootfs/etc/xkb/rules/evdev.xml
 [xkb-symbols]: rootfs/etc/xkb/symbols/fr-qwerty
