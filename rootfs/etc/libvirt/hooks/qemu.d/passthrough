@@ -5,8 +5,6 @@ PATH=/usr/sbin:/usr/bin
 
 desktop=display-manager.service
 stub=vfio-pci
-amd=0x1002
-amd_bar2=3
 
 machine=${1-}
 state=/run/libvirt/hooks/passthrough/$machine
@@ -65,28 +63,20 @@ hold_power() {
     sysfs on "/sys/bus/pci/devices/$1/power/control"
 }
 
+other_display_exists() {
+    local c dev
+    for c in /sys/bus/pci/devices/*/class; do
+        [[ $(< "$c") == 0x030000 ]] || continue
+        dev=${c%/class}; dev=${dev##*/}
+        [[ " ${devices[*]} " == *" $dev "* ]] && continue
+        return 0
+    done
+    return 1
+}
+
 restore_power() {
     sysfs 1 "/sys/bus/pci/devices/$1/d3cold_allowed"
     sysfs auto "/sys/bus/pci/devices/$1/power/control"
-}
-
-bar_size() {
-    local start end size n=0
-    read -r start end _ < <(sed -n "$(( $2 + 1 ))p" "/sys/bus/pci/devices/$1/resource")
-    size=$(( end - start + 1 ))
-    while (( (1 << n) * 1024 * 1024 < size )); do
-        n=$((n + 1))
-    done
-    echo "$n"
-}
-
-shrink_bar2() {
-    local resize="/sys/bus/pci/devices/$1/resource2_resize" size
-    [[ $(< "/sys/bus/pci/devices/$1/vendor") == "$amd" && -f $resize ]] || return 0
-    size=$(bar_size "$1" 2)
-    (( size > amd_bar2 )) || return 0
-    sysfs "$amd_bar2" "$resize"
-    echo "$size"
 }
 
 holders() {
@@ -167,7 +157,7 @@ prepare() {
     stop_desktop
     console_off
 
-    local dev driver bar2
+    local dev driver
     for dev in "${devices[@]}"; do
         driver=$(driver_of "$dev")
         if [[ $driver == "$stub" ]]; then
@@ -175,14 +165,17 @@ prepare() {
         fi
         hold_power "$dev"
         detach "$dev"
-        bar2=$(shrink_bar2 "$dev")
-        echo "$dev ${driver:--} ${bar2:--}" >> "$state/devices"
+        echo "$dev ${driver:--}" >> "$state/devices"
     done
 
     modprobe "$stub"
     for dev in "${devices[@]}"; do
         attach "$dev" "$stub"
     done
+    if [[ -f $state/desktop ]] && other_display_exists; then
+        log "starting the desktop on the remaining display device"
+        systemctl start "$desktop"
+    fi
     log "ready"
 }
 
@@ -196,14 +189,10 @@ release() {
     trap - ERR
     set +e
 
-    local dev driver bar2 try
+    local dev driver try
     if [[ -f $state/devices ]]; then
-        while read -r dev driver bar2; do
+        while read -r dev driver; do
             [[ $(driver_of "$dev") == "$stub" ]] && detach "$dev"
-            if [[ $bar2 != - ]]; then
-                sysfs "$bar2" "/sys/bus/pci/devices/$dev/resource2_resize" ||
-                    log "$dev keeps BAR 2 at its reduced size"
-            fi
             if [[ $driver != - ]]; then
                 for try in 1 2 3 4 5; do
                     attach "$dev" "$driver" && break
@@ -219,8 +208,8 @@ release() {
 
     console_on
     if [[ -f $state/desktop ]]; then
-        log "starting the desktop"
-        systemctl start "$desktop"
+        log "restarting the desktop"
+        systemctl restart "$desktop"
     fi
     rm -rf "$state"
 }

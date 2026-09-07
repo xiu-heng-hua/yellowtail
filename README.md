@@ -116,7 +116,9 @@ ones exist.
 Some software only exists for Windows, and some of it needs a real graphics
 card behind a real Windows driver. So Windows runs in a virtual machine that is
 given a graphics card for as long as it runs. Where that card is the only one,
-the desktop has to go while Windows has it; Linux keeps running underneath.
+the desktop has to go while Windows has it. Linux keeps running underneath, and
+where the computer has a second GPU, a processor's built-in one for instance,
+the desktop comes straight back on that.
 
 The machine belongs to the system libvirt: only that one runs [the hook][hook]
 that does the hand-over, and only it may pass hardware through. virt-manager
@@ -133,10 +135,19 @@ below](#virtual-machines-arrive-without-their-state-directories).
    the card is, there may be no desktop left to watch a failure on.
 
 2. Shut it down, then edit it with `virsh -c qemu:///system edit NAME`.
-   Everything below goes inside `<devices>`.
 
-   Find the card's PCI address, and that of its audio function, which is the
-   same address ending in `.1`:
+   First, make the machine report some hypervisor other than Hyper-V. libvirt
+   advertises Hyper-V to every Windows guest, because Windows runs better with
+   its enlightenments, and AMD's graphics driver looks for exactly that and
+   locks the machine up the moment it loads. Inside the existing `<hyperv>`
+   element, add:
+
+   ```xml
+   <vendor_id state='on' value='randomid'/>
+   ```
+
+   The rest goes inside `<devices>`. Find the card's PCI address, and that of
+   its audio function, which is the same address ending in `.1`:
 
    ```sh
    lspci -Dnn -d ::0300
@@ -158,12 +169,12 @@ below](#virtual-machines-arrive-without-their-state-directories).
    </hostdev>
    ```
 
-   If the desktop will be gone, give the machine the keyboard and the mouse,
-   since nothing will be left to relay them. They are listed by name under
-   `/dev/input/by-id/`; take the keyboard's `event-kbd` entry and the mouse's
-   `event-mouse` one. QEMU holds them for Windows while the machine runs and
-   lets go when it stops; pressing both Ctrl keys at once hands them to the
-   other side in the meantime:
+   Give the machine the keyboard and the mouse, since the desktop that would
+   have relayed them will be gone, or on another screen. They are listed by
+   name under `/dev/input/by-id/`; take the keyboard's `event-kbd` entry and
+   the mouse's `event-mouse` one. QEMU holds them for Windows while the machine
+   runs and lets go when it stops; pressing both Ctrl keys at once hands them
+   to the other side in the meantime:
 
    ```xml
    <input type='evdev'>
@@ -179,39 +190,30 @@ below](#virtual-machines-arrive-without-their-state-directories).
    Left in, Windows makes the emulated display its main screen and puts
    nothing useful on the monitor.
 
-3. Start it with `virsh -c qemu:///system start NAME`. If the desktop was
-   using the card, the terminal that was typed in vanishes with it; that is
-   the hook stopping the login manager, and the start carries on without it.
-   The monitor then shows the firmware, then Windows on its basic display
-   driver. Install the card's driver at that point, once; from then on Windows
-   drives the card itself.
+3. Start it with `virsh -c qemu:///system start NAME`. The terminal that was
+   typed in vanishes with the desktop; that is the hook stopping the login
+   manager, and the start carries on without it. The monitor then shows the
+   firmware, then Windows on its basic display driver. Install the card
+   maker's own driver package at that point, once; from then on Windows drives
+   the card itself, with the card's full memory aperture. Do this after the
+   step above, not before: a driver that loads without the changed identifier
+   locks Windows up mid-installation, and the half-installed result has to be
+   removed from Safe Mode before anything works again.
 
-   If the monitor shows nothing at all, not even the firmware, the card's ROM
-   could not be read after the host had used it. Copy it out while the host's
-   driver holds the card, into the directory libvirt keeps for files a machine
-   boots from, which is the one QEMU is allowed to read:
-
-   ```sh
-   sudo sh -c 'cd /sys/bus/pci/devices/0000:01:00.0 && echo 1 > rom && cat rom > /var/lib/libvirt/boot/gpu.rom; echo 0 > rom'
-   ```
-
-   then name it in the first host device, next to its `source`:
-
-   ```xml
-   <rom file='/var/lib/libvirt/boot/gpu.rom'/>
-   ```
+   If instead the login screen comes straight back, the start failed after
+   the hook had done its part, and `journalctl -k` says why. One cause with a
+   known cure: `Firmware has requested this device have a 1:1 IOMMU mapping`
+   means the firmware's Kernel DMA Protection is on, and it refuses every
+   device on the first PCI buses to VFIO until that is turned off in the BIOS.
 
 4. Shut Windows down from inside Windows, or with
-   `virsh -c qemu:///system shutdown NAME` over `ssh`, which asks Windows the
-   same thing through ACPI. Once the machine has stopped, the hook hands the
-   card back to its driver, and starts the login manager again if it had
-   stopped it.
-
-Never force the machine off, neither with `virsh destroy` nor with
-virt-manager's *Force Off*. The hook still runs and tries to reset the card,
-but the card is reset while its firmware is mid-way through something, and
-usually only a reboot recovers it. `journalctl -t passthrough` shows every
-step the hook took, which is where to look if the desktop does not come back.
+   `virsh -c qemu:///system shutdown NAME`, which asks Windows the same thing
+   through ACPI. Once the machine has stopped, the hook hands the card back to
+   its driver and restarts the login manager, so the card is the desktop's
+   again. A machine that no longer answers can be stopped with `virsh
+   destroy`; the hook gives the card back all the same, with a reset if it has
+   to, and that has recovered cleanly here, but for Windows it is a power cut.
+   `journalctl -t passthrough` shows every step the hook took.
 
 ## Verifying the images
 
@@ -438,15 +440,17 @@ GPU or a streamed desktop, provides that. Passing a card through means the host
 has to let go of it first.
 
 The usual set-up binds the card to `vfio-pci` at boot, with a kernel argument,
-so that the host never touches it. That needs a second GPU for the desktop, and
-it does not suit every card: AMD's RDNA4 cards, the Radeon RX 9000 series, have
-to be brought up by `amdgpu` after boot, or Windows finds them in a state it
-cannot use. So [the hook][hook] does the hand-over when the machine starts, and
-takes the card from whoever holds it then. When nothing does, because the card
-was bound to `vfio-pci` at boot and another GPU carries the desktop, the
-desktop is left alone. When the desktop holds it, the desktop is stopped: GNOME
-on Wayland opens every GPU it can see and never lets one go, so there is no
-taking a card from a running desktop. Linux stays up underneath either way.
+so that the host never touches it. That needs a second GPU for the desktop and
+loses the card to Linux entirely. So [the hook][hook] does the hand-over when
+the machine starts, and takes the card from whoever holds it then. When nothing
+does, because the card was bound to `vfio-pci` at boot and another GPU carries
+the desktop, the desktop is left alone. When the desktop holds it, the desktop
+is stopped: GNOME on Wayland opens every GPU it can see and never lets one go,
+so there is no taking a card from a running desktop. If a display device
+remains, the login manager is started again at once and the desktop comes back
+on that one; when the machine stops, it is restarted once more, so that the
+returned card is the desktop's primary GPU again. Linux stays up underneath in
+every case.
 
 libvirt runs every executable in `/etc/libvirt/hooks/qemu.d/` at each step of
 every machine's life, as root, with the machine's name and the step as
@@ -458,11 +462,11 @@ login manager if any process holds one of the devices, detaches each device's
 driver, remembering which, and attaches `vfio-pci`; if any of that fails, it
 undoes what it did and exits non-zero, which makes libvirt refuse to start the
 machine. At `release`, once the machine has stopped, it does the reverse in
-reverse order and starts the login manager again if it had stopped it, and
-nothing on that path stops at an error, since libvirt no longer cares and the
-desktop has to come back regardless. What `prepare` learns for `release` it
-leaves under `/run/libvirt`, which is emptied at boot. The hook never calls
-`virsh`: libvirt is waiting for it, and that would deadlock.
+reverse order and restarts the login manager if it had stopped it, and nothing
+on that path stops at an error, since libvirt no longer cares and the desktop
+has to come back regardless. What `prepare` learns for `release` it leaves
+under `/run/libvirt`, which is emptied at boot. The hook never calls `virsh`:
+libvirt is waiting for it, and that would deadlock.
 
 Stopping the login manager ends the graphical session, but its programs take a
 moment to go, and a driver must not be pulled from under one. The hook finds
@@ -473,20 +477,23 @@ unbound first.
 
 The rest is what the cards want. Every device is kept out of its deepest power
 state while no driver holds it, or it powers down between the two drivers and
-the second one cannot wake it. An AMD card whose second memory region, BAR 2,
-can be resized has it shrunk to 8 MiB before Windows sees it, and the size put
-back afterwards; both are only possible while no driver holds the card. The
-rule is written for RDNA4, whose Windows driver refuses anything larger with
-error 43, and applied to any AMD card that offers the resize, since it is
-undone on the way back. Drivers are chosen with `driver_override` and bound by
-address, and the override is cleared afterwards by writing a lone newline,
-because a write of nothing at all never reaches the kernel. On the way back
-each driver is given five tries, with a reset of the device after the third,
-before the desktop is started anyway. And the host devices carry
+the second one cannot wake it. Drivers are chosen with `driver_override` and
+bound by address, and the override is cleared afterwards by writing a lone
+newline, because a write of nothing at all never reaches the kernel. On the way
+back each driver is given five tries, with a reset of the device after the
+third, before the desktop is restarted anyway. And the host devices carry
 `managed='no'`: with `managed='yes'`, libvirt would hand the card back by
 itself, by asking the kernel to pick a driver, before the hook can restore the
-card's memory region and power settings, and by a route that does not always
-work.
+card's power settings, and by a route that does not always work.
+
+Nothing is done to the card's memory regions. Advice from 2025 has AMD's
+Windows driver refusing a card whose regions were not shrunk first, and this
+hook did that for a while; what the driver was refusing turned out to be the
+Hyper-V that libvirt advertises, and with the identifier changed as the Windows
+section says, the driver takes the full aperture and enables Smart Access
+Memory. A card the desktop had been using, a card handed over straight from
+boot, and a card the host had been putting to sleep in each of amdgpu's two
+ways all worked once that was fixed.
 
 ### SELinux does not let libvirt run QEMU hooks
 
