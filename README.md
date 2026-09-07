@@ -468,8 +468,11 @@ machine. At `release`, once the machine has stopped, it does the reverse in
 reverse order and restarts the login manager if it had stopped it, and nothing
 on that path stops at an error, since libvirt no longer cares and the desktop
 has to come back regardless. What `prepare` learns for `release` it leaves
-under `/run/libvirt`, which is emptied at boot. The hook never calls `virsh`:
-libvirt is waiting for it, and that would deadlock.
+under `/run/libvirt`, which is emptied at boot, and a second `prepare` for the
+same machine leaves that record alone rather than starting over, so that a
+stray copy of the hook in the same directory cannot make the release forget
+what to give back. The hook never calls `virsh`: libvirt is waiting for it,
+and that would deadlock.
 
 Stopping the login manager ends the graphical session, but its programs take a
 moment to go, and a driver must not be pulled from under one. The hook finds
