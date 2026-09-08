@@ -130,6 +130,13 @@ stop_desktop() {
     wait_for_holders
 }
 
+hold_awake() {
+    setsid systemd-inhibit --what=sleep:idle --who=passthrough \
+        --why="$machine has passed-through devices" --mode=block \
+        sh -c "while [ -d '$state' ]; do sleep 5; done" \
+        < /dev/null > /dev/null 2>&1 &
+}
+
 console_off() {
     local con
     for con in /sys/class/vtconsole/vtcon*; do
@@ -180,6 +187,7 @@ prepare() {
         log "starting the desktop on the remaining display device"
         systemctl start "$desktop"
     fi
+    hold_awake
     log "ready"
 }
 

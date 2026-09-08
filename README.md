@@ -453,7 +453,11 @@ so there is no taking a card from a running desktop. If a display device
 remains, the login manager is started again at once and the desktop comes back
 on that one; when the machine stops, it is restarted once more, so that the
 returned card is the desktop's primary GPU again. Linux stays up underneath in
-every case.
+every case, and awake: for as long as the machine has the devices, the hook
+holds a sleep inhibitor, because the login screen it leaves behind suspends an
+idle computer after a quarter of an hour, a keyboard and mouse held by Windows
+count as idle, and a host asleep under a running machine takes the card down
+with it.
 
 libvirt runs every executable in `/etc/libvirt/hooks/qemu.d/` at each step of
 every machine's life, as root, with the machine's name and the step as
