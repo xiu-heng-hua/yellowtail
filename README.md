@@ -178,12 +178,14 @@ below](#virtual-machines-arrive-without-their-state-directories).
    have relayed them will be gone, or on another screen. They are listed by
    name under `/dev/input/by-id/`; take the keyboard's `event-kbd` entry and
    the mouse's `event-mouse` one. QEMU holds them for Windows while the machine
-   runs and lets go when it stops; pressing both Ctrl keys at once hands them
-   to the other side in the meantime:
+   runs and lets go when it stops; pressing both Shift keys at once hands them
+   to the other side in the meantime. Shift rather than the default Ctrl,
+   because both systems swap Ctrl with Caps Lock, and the first key of the
+   pair reaches whichever side has the keyboard before the toggle fires:
 
    ```xml
    <input type='evdev'>
-     <source dev='/dev/input/by-id/usb-KEYBOARD-event-kbd' grab='all' repeat='on'/>
+     <source dev='/dev/input/by-id/usb-KEYBOARD-event-kbd' grab='all' grabToggle='shift-shift' repeat='on'/>
    </input>
    <input type='evdev'>
      <source dev='/dev/input/by-id/usb-MOUSE-event-mouse'/>
