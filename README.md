@@ -31,9 +31,11 @@ The image also carries what a virtual machine needs to borrow a graphics card:
 a [libvirt hook][hook] that takes any PCI device a machine passes through
 unmanaged away from whatever holds it, the desktop included, when the machine
 starts, and gives it back when the machine stops, and an [SELinux module][cil]
-without which libvirt could not run that hook at all, and a [`windows`
-command][windows-cmd] that starts, stops and reports on the machine. The
-machine itself is created per computer; see [Windows](#windows).
+without which libvirt could not run that hook at all, a [`windows`
+command][windows-cmd] that starts, stops and reports on the machine, and a
+small disc it can hand to Windows with the [keyboard layout][klc] and the
+other settings Windows cannot inherit from Linux. The machine itself is created
+per computer; see [Windows](#windows).
 
 It also carries a French QWERTY keyboard layout: QWERTY letters, with the
 accented characters on AltGr. [GNOME](https://www.gnome.org/) lists it as
@@ -202,6 +204,13 @@ below](#virtual-machines-arrive-without-their-state-directories).
    step above, not before: a driver that loads without the changed identifier
    locks Windows up mid-installation, and the half-installed result has to be
    removed from Safe Mode before anything works again.
+
+   Then, from Linux, `windows postinstall`. A USB disc appears in Windows
+   holding the same French (QWERTY) layout as Linux, in the form Microsoft's
+   Keyboard Layout Creator builds into an installable layout, a registry file
+   that swaps Caps Lock and Ctrl, and a text file with the steps, which the
+   command prints as well. The disc is gone at the next shutdown; run the
+   command again if it is needed again.
 
    If instead the login screen comes straight back, the start failed after
    the hook had done its part, and `journalctl -k` says why. One cause with a
@@ -504,6 +513,31 @@ section says, the driver takes the full aperture and enables Smart Access
 Memory. A card the desktop had been using, a card handed over straight from
 boot, and a card the host had been putting to sleep in each of amdgpu's two
 ways all worked once that was fixed.
+
+### Windows gets its keyboard on a disc
+
+The keyboard reaches Windows as raw key presses through evdev, so the layout
+Linux applies never applies inside; Windows needs its own. Microsoft's
+Keyboard Layout Creator builds one from a text description, and
+[`fr-qwerty.klc`][klc] is that description, written from the xkb symbols key
+for key, with the same four dead keys and the same characters under AltGr.
+The two files describe one layout and change together; xkb stays the one the
+desktop reads. Caps Lock swapped with Ctrl is not a layout matter on Windows
+but a scancode remap in the registry, so it travels as a [registry
+file][reg]. Neither can be applied from Linux, so they are handed over the
+way Windows expects settings from outside: on a disc.
+
+[`build.sh`][build] turns the directory into that disc with `xorriso`, which
+the image has already because virt-manager needs it. The layout tool wants
+its input in UTF-16 with Windows line endings, and the registry editor is
+happiest with the same, so the build converts both on the way and leaves the
+sources in the repository as plain text. `windows postinstall` copies the disc
+into libvirt's storage pool the first time, under a name derived from its
+content so that a changed disc gets a fresh copy, and hot-plugs it into the
+running machine as a USB drive. The copy exists because QEMU is only allowed
+to read files libvirt has labelled, and libvirt cannot label anything on the
+read-only image. A hot-plugged drive is not written into the definition, so
+it disappears at the next shutdown, which is what a settings disc should do.
 
 ### SELinux does not let libvirt run QEMU hooks
 
@@ -850,11 +884,13 @@ editing the `FROM` line.
 [gschema]: rootfs/usr/share/glib-2.0/schemas/zz-yellowtail.gschema.override
 [hook]: rootfs/etc/libvirt/hooks/qemu.d/passthrough
 [install-cfg]: rootfs/usr/lib/bootc/install
+[klc]: rootfs/usr/share/yellowtail/windows/fr-qwerty.klc
 [packages]: https://github.com/xiu-heng-hua/yellowtail/pkgs/container/yellowtail
 [policy]: rootfs/etc/containers/policy.json
 [preinstall]: rootfs/usr/share/flatpak/preinstall.d/yellowtail.preinstall
 [pubkey]: rootfs/etc/pki/containers/yellowtail.pub
 [pungi]: https://forge.fedoraproject.org/releng/pungi-fedora/src/branch/f44/fedora.conf
+[reg]: rootfs/usr/share/yellowtail/windows/swap-caps-ctrl.reg
 [registries]: rootfs/etc/containers/registries.d/yellowtail.yaml
 [tmpfiles]: rootfs/usr/lib/tmpfiles.d/yellowtail.conf
 [vconsole]: rootfs/etc/vconsole.conf

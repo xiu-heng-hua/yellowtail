@@ -50,6 +50,17 @@ semodule --noreload --install /usr/share/selinux/packages/yellowtail_virt_hooks.
 semanage boolean --noreload --modify --on virt_hooks_unconfined
 rm -rf /etc/selinux/targeted/previous
 
+mkdir /run/postinstall
+
+for f in fr-qwerty.klc swap-caps-ctrl.reg; do
+    printf '\xff\xfe' > "/run/postinstall/$f"
+    sed 's/$/\r/' "/usr/share/yellowtail/windows/$f" | iconv -f UTF-8 -t UTF-16LE >> "/run/postinstall/$f"
+done
+
+sed 's/$/\r/' /usr/share/yellowtail/windows/README.txt > /run/postinstall/README.txt
+
+xorriso -as mkisofs -quiet -J -R -V POSTINSTALL -o /usr/share/yellowtail/windows.iso /run/postinstall
+
 systemctl enable brew-setup.service brew-update.timer brew-upgrade.timer
 
 python3 -c "

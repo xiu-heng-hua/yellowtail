@@ -18,8 +18,32 @@ case ${1-} in
     status)
         exec virsh -c "$uri" domstate "$machine"
         ;;
+    postinstall)
+        if [[ $(virsh -c "$uri" domstate "$machine") != running ]]; then
+            echo "windows: start the machine first" >&2
+            exit 1
+        fi
+        iso=/usr/share/yellowtail/windows.iso
+        name="postinstall-$(sha256sum "$iso" | cut -c1-12).iso"
+        if ! virsh -c "$uri" vol-info --pool default "$name" > /dev/null 2>&1; then
+            virsh -c "$uri" vol-create-as default "$name" "$(stat -c %s "$iso")" --format raw > /dev/null
+            virsh -c "$uri" vol-upload --pool default "$name" "$iso"
+        fi
+        path=$(virsh -c "$uri" vol-path --pool default "$name")
+        if ! virsh -c "$uri" domblklist "$machine" | grep -q "$path"; then
+            virsh -c "$uri" attach-device "$machine" /dev/stdin --live > /dev/null <<XML
+<disk type='file' device='cdrom'>
+  <driver name='qemu' type='raw'/>
+  <source file='$path'/>
+  <target dev='sdz' bus='usb'/>
+  <readonly/>
+</disk>
+XML
+        fi
+        cat /usr/share/yellowtail/windows/README.txt
+        ;;
     *)
-        echo "usage: windows start|stop|kill|status" >&2
+        echo "usage: windows start|stop|kill|status|postinstall" >&2
         exit 1
         ;;
 esac
