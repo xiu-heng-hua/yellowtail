@@ -4,34 +4,255 @@ set -euo pipefail
 
 machine=windows
 uri=qemu:///system
+pool=default
 
-case ${1-} in
-    start)
-        exec virsh -c "$uri" start "$machine"
-        ;;
-    stop)
-        exec virsh -c "$uri" shutdown "$machine"
-        ;;
-    kill)
-        exec virsh -c "$uri" destroy "$machine"
-        ;;
-    status)
-        exec virsh -c "$uri" domstate "$machine"
-        ;;
-    postinstall)
-        if [[ $(virsh -c "$uri" domstate "$machine") != running ]]; then
-            echo "windows: start the machine first" >&2
+virsh() {
+    command virsh -c "$uri" "$@"
+}
+
+preinstall() {
+    if virsh dominfo "$machine" > /dev/null 2>&1; then
+        echo "windows: the machine already exists" >&2
+        exit 1
+    fi
+    if virsh vol-info --pool "$pool" "$machine.qcow2" > /dev/null 2>&1; then
+        echo "windows: a disk named $machine.qcow2 already exists in the $pool pool" >&2
+        exit 1
+    fi
+    virsh vol-create-as "$pool" "$machine.qcow2" 256G --format qcow2 > /dev/null
+    python3 - "$uri" "$machine" "$(virsh vol-path --pool "$pool" "$machine.qcow2")" <<'PY'
+import os
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+uri, machine, disk = sys.argv[1:]
+
+def virsh(*args, **kwargs):
+    return subprocess.run(['virsh', '-c', uri, *args], check=True, text=True, capture_output=True, **kwargs).stdout
+
+capabilities = ET.fromstring(virsh('domcapabilities', '--machine', 'q35'))
+supported = {v.text for v in capabilities.findall("features/hyperv/enum[@name='features']/value")}
+wanted = ['relaxed', 'vapic', 'spinlocks', 'vpindex', 'runtime', 'synic', 'stimer',
+          'vendor_id', 'frequencies', 'tlbflush', 'ipi', 'avic']
+extra = {'spinlocks': " retries='8191'", 'vendor_id': " value='randomid'"}
+hyperv = '\n'.join(f"      <{f} state='on'{extra.get(f, '')}/>" for f in wanted if f in supported)
+
+with open('/proc/meminfo') as f:
+    total = int(next(line for line in f if line.startswith('MemTotal:')).split()[1])
+memory = total // 2 // 1048576 * 1048576
+
+with open('/sys/devices/system/cpu/cpu0/topology/core_cpus_list') as f:
+    threads = 0
+    for part in f.read().split(','):
+        first, _, last = part.partition('-')
+        threads += int(last or first) - int(first) + 1
+cores = max(2, os.cpu_count() // threads - 2)
+
+with open('/proc/cpuinfo') as f:
+    amd = any(line.startswith('vendor_id') and line.rstrip().endswith('AuthenticAMD') for line in f)
+topoext = "\n    <feature policy='require' name='topoext'/>" if amd else ''
+
+virsh('define', '/dev/stdin', input=f"""<domain type='kvm'>
+  <name>{machine}</name>
+  <metadata>
+    <libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0">
+      <libosinfo:os id="http://microsoft.com/win/11"/>
+    </libosinfo:libosinfo>
+  </metadata>
+  <memory unit='KiB'>{memory}</memory>
+  <memoryBacking>
+    <source type='memfd'/>
+    <access mode='shared'/>
+  </memoryBacking>
+  <vcpu>{cores * threads}</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <firmware>
+      <feature enabled='yes' name='enrolled-keys'/>
+      <feature enabled='yes' name='secure-boot'/>
+    </firmware>
+    <boot dev='cdrom'/>
+    <boot dev='hd'/>
+    <bootmenu enable='yes'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <hyperv mode='custom'>
+{hyperv}
+    </hyperv>
+    <vmport state='off'/>
+    <smm state='on'/>
+  </features>
+  <cpu mode='host-passthrough' check='none'>
+    <topology sockets='1' cores='{cores}' threads='{threads}'/>{topoext}
+  </cpu>
+  <clock offset='localtime'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+    <timer name='hypervclock' present='yes'/>
+  </clock>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' discard='unmap'/>
+      <source file='{disk}'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sdb' bus='sata'/>
+      <readonly/>
+    </disk>
+    <controller type='usb' model='qemu-xhci' ports='15'/>
+    <interface type='network'>
+      <source network='default'/>
+      <model type='virtio'/>
+    </interface>
+    <channel type='spicevmc'>
+      <target type='virtio' name='com.redhat.spice.0'/>
+    </channel>
+    <input type='tablet' bus='usb'/>
+    <graphics type='spice' autoport='yes'>
+      <listen type='address'/>
+      <image compression='off'/>
+    </graphics>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1' primary='yes'/>
+    </video>
+    <tpm model='tpm-crb'>
+      <backend type='emulator' version='2.0'/>
+    </tpm>
+    <audio id='1' type='none'/>
+  </devices>
+</domain>
+""")
+print(f"{machine}: {memory // 1048576} GiB of memory, {cores} cores of {threads} threads, a 256 GiB disk and two empty CD-ROM drives")
+PY
+}
+
+finish() {
+    case $(virsh domstate "$machine" 2> /dev/null || true) in
+        '')
+            echo "windows: no machine; run windows preinstall first" >&2
             exit 1
-        fi
-        iso=/usr/share/yellowtail/windows.iso
-        name="postinstall-$(sha256sum "$iso" | cut -c1-12).iso"
-        if ! virsh -c "$uri" vol-info --pool default "$name" > /dev/null 2>&1; then
-            virsh -c "$uri" vol-create-as default "$name" "$(stat -c %s "$iso")" --format raw > /dev/null
-            virsh -c "$uri" vol-upload --pool default "$name" "$iso"
-        fi
-        path=$(virsh -c "$uri" vol-path --pool default "$name")
-        if ! virsh -c "$uri" domblklist "$machine" | grep -q "$path"; then
-            virsh -c "$uri" attach-device "$machine" /dev/stdin --live > /dev/null <<XML
+            ;;
+        'shut off')
+            ;;
+        *)
+            echo "windows: shut the machine down first" >&2
+            exit 1
+            ;;
+    esac
+    python3 - "$uri" "$machine" <<'PY'
+import glob
+import os
+import re
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+uri, machine = sys.argv[1:]
+
+def virsh(*args, **kwargs):
+    return subprocess.run(['virsh', '-c', uri, *args], check=True, text=True, capture_output=True, **kwargs).stdout
+
+def fail(message):
+    print(f'windows: {message}', file=sys.stderr)
+    sys.exit(1)
+
+def pci(device, attribute):
+    with open(f'/sys/bus/pci/devices/{device}/{attribute}') as f:
+        return f.read().strip()
+
+ET.register_namespace('libosinfo', 'http://libosinfo.org/xmlns/libvirt/domain/1.0')
+domain = ET.fromstring(virsh('dumpxml', '--inactive', machine))
+devices = domain.find('devices')
+if devices.find('hostdev') is not None:
+    fail('the machine already has its card')
+
+cards = [os.path.basename(os.path.dirname(p)) for p in glob.glob('/sys/bus/pci/devices/*/boot_vga')
+         if open(p).read().strip() == '1']
+if len(cards) != 1:
+    fail('no boot VGA device to pass through')
+functions = sorted(os.path.basename(p) for p in glob.glob(f'/sys/bus/pci/devices/{cards[0][:-1]}*'))
+for function in functions:
+    if not os.path.exists(f'/sys/bus/pci/devices/{function}/iommu_group'):
+        fail(f'{function} is in no IOMMU group; the IOMMU is off in the BIOS or on the kernel command line')
+    group = os.path.basename(os.readlink(f'/sys/bus/pci/devices/{function}/iommu_group'))
+    others = [d for d in os.listdir(f'/sys/kernel/iommu_groups/{group}/devices')
+              if d not in functions and not pci(d, 'class').startswith('0x0604')]
+    if others:
+        fail(f"{function} shares IOMMU group {group} with {' '.join(others)}, which would have to go with it")
+    with open(f'/sys/kernel/iommu_groups/{group}/reserved_regions') as f:
+        if any(line.split()[-1].startswith('direct') for line in f):
+            fail(f'the firmware demands a 1:1 IOMMU mapping for {function}; turn Kernel DMA Protection off in the BIOS')
+
+def pick(kind):
+    entries = sorted(glob.glob(f'/dev/input/by-id/*-event-{kind}'))
+    main = [e for e in entries if not re.search(r'-if\d\d-', os.path.basename(e))]
+    if not entries:
+        fail(f'no {kind} under /dev/input/by-id')
+    return main or entries
+
+keyboards = pick('kbd')
+mice = pick('mouse')
+
+for element in list(devices):
+    if element.tag in ('graphics', 'video', 'channel', 'redirdev'):
+        devices.remove(element)
+    elif element.tag == 'disk' and element.get('device') == 'cdrom' and element.find('target').get('bus') == 'sata':
+        devices.remove(element)
+    elif element.tag == 'input' and element.get('type') == 'tablet':
+        devices.remove(element)
+
+os_ = domain.find('os')
+boots = os_.findall('boot')
+position = list(os_).index(boots[0])
+for boot in boots:
+    os_.remove(boot)
+os_.insert(position, ET.Element('boot', dev='hd'))
+
+for function in functions:
+    domain_, bus, slot, function_ = re.split('[:.]', function)
+    hostdev = ET.SubElement(devices, 'hostdev', mode='subsystem', type='pci', managed='no')
+    ET.SubElement(ET.SubElement(hostdev, 'source'), 'address',
+                  domain=f'0x{domain_}', bus=f'0x{bus}', slot=f'0x{slot}', function=f'0x{function_}')
+keyboard = ET.SubElement(devices, 'input', type='evdev')
+ET.SubElement(keyboard, 'source', dev=keyboards[0], grab='all', grabToggle='shift-shift', repeat='on')
+mouse = ET.SubElement(devices, 'input', type='evdev')
+ET.SubElement(mouse, 'source', dev=mice[0])
+
+virsh('define', '/dev/stdin', input=ET.tostring(domain, encoding='unicode'))
+
+print(f"card: {' '.join(functions)}")
+for name, entries in ('keyboard', keyboards), ('mouse', mice):
+    print(f'{name}: {entries[0]}')
+    if len(entries) > 1:
+        print(f"  not: {' '.join(entries[1:])}")
+PY
+}
+
+postinstall() {
+    iso=/usr/share/yellowtail/windows.iso
+    name="postinstall-$(sha256sum "$iso" | cut -c1-12).iso"
+    if ! virsh vol-info --pool "$pool" "$name" > /dev/null 2>&1; then
+        virsh vol-create-as "$pool" "$name" "$(stat -c %s "$iso")" --format raw > /dev/null
+        virsh vol-upload --pool "$pool" "$name" "$iso"
+    fi
+    path=$(virsh vol-path --pool "$pool" "$name")
+    if ! virsh domblklist "$machine" | grep -q "$path"; then
+        virsh attach-device "$machine" /dev/stdin --persistent > /dev/null <<XML
 <disk type='file' device='cdrom'>
   <driver name='qemu' type='raw'/>
   <source file='$path'/>
@@ -39,11 +260,34 @@ case ${1-} in
   <readonly/>
 </disk>
 XML
-        fi
-        cat /usr/share/yellowtail/windows/README.txt
+    fi
+    cat /usr/share/yellowtail/windows/README.txt
+}
+
+case ${1-} in
+    preinstall)
+        preinstall
+        ;;
+    finish)
+        finish
+        ;;
+    start)
+        virsh start "$machine"
+        ;;
+    postinstall)
+        postinstall
+        ;;
+    stop)
+        virsh shutdown "$machine"
+        ;;
+    kill)
+        virsh destroy "$machine"
+        ;;
+    status)
+        virsh domstate "$machine"
         ;;
     *)
-        echo "usage: windows start|stop|kill|status|postinstall" >&2
+        echo "usage: windows preinstall|finish|start|postinstall|stop|kill|status" >&2
         exit 1
         ;;
 esac

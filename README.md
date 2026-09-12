@@ -32,10 +32,10 @@ a [libvirt hook][hook] that takes any PCI device a machine passes through
 unmanaged away from whatever holds it, the desktop included, when the machine
 starts, and gives it back when the machine stops, and an [SELinux module][cil]
 without which libvirt could not run that hook at all, a [`windows`
-command][windows-cmd] that starts, stops and reports on the machine, and a
-small disc it can hand to Windows with the [keyboard layout][klc] and the
-other settings Windows cannot inherit from Linux. The machine itself is created
-per computer; see [Windows](#windows).
+command][windows-cmd] that creates the machine, starts and stops it and
+reports on it, and a small disc it can hand to Windows with the [keyboard
+layout][klc] and the other settings Windows cannot inherit from Linux. The
+machine itself is created per computer; see [Windows](#windows).
 
 It also carries a French QWERTY keyboard layout: QWERTY letters, with the
 accented characters on AltGr. [GNOME](https://www.gnome.org/) lists it as
@@ -127,92 +127,64 @@ The machine belongs to the system libvirt: only that one runs [the hook][hook]
 that does the hand-over, and only it may pass hardware through. virt-manager
 opens it by default, but `virsh` run by a user opens a private one unless told
 otherwise, so the `virsh` command below names it with `-c qemu:///system`, and
-so does the [`windows` command][windows-cmd] that drives the machine once it
-exists. Your account has to be in the `libvirt` group, as [described
+so does the [`windows` command][windows-cmd] that creates the machine and
+drives it. Your account has to be in the `libvirt` group, as [described
 below](#virtual-machines-arrive-without-their-state-directories).
 
-1. Create the machine in virt-manager from a Windows 11 installer, and name it
-   `windows`, which is the name the command expects. virt-manager
-   sets UEFI and adds a TPM when it recognises the installer, and Windows 11
-   refuses to install without them, so a slip there shows itself before
-   anything else. Install Windows through the emulated display. That proves
-   the disk, the network and Windows itself before the card is involved; once
-   the card is, there may be no desktop left to watch a failure on.
+1. Create the machine with `windows preinstall`. That defines a machine
+   called `windows`, the name the rest of the command expects, with
+   everything about it that does not depend on the computer or on where the
+   installer is: a 256 GiB disk in libvirt's default pool, UEFI with Secure
+   Boot and a TPM, which Windows 11 refuses to install without, the settings
+   Windows runs best with, an emulated display to install through, and two
+   empty CD-ROM drives. Memory and processors are sized from the computer,
+   half of its memory and all but two of its cores, and virt-manager changes
+   any of this afterwards.
 
-2. Shut it down, then edit it with `virsh -c qemu:///system edit windows`.
+   Then, in virt-manager, open the machine, put the [Windows 11
+   installer][win11] in the first CD-ROM drive and Fedora's [virtio-win
+   disc][virtio-win] in the second, and run it. Setup sees neither the disk
+   nor the network until it has loaded their drivers from the second disc:
+   at the step that asks where to install, load the driver under `viostor`,
+   then the one under `NetKVM`, each from the folder for the version of
+   Windows being installed. Install Windows through the emulated display.
+   That proves the disk, the network and Windows itself before the card is
+   involved; once the card is, there may be no desktop left to watch a
+   failure on. In Windows, run the guest tools installer from the second
+   disc, which brings the rest of the drivers, let Windows Update finish,
+   then shut down.
 
-   First, make the machine report some hypervisor other than Hyper-V. libvirt
-   advertises Hyper-V to every Windows guest, because Windows runs better with
-   its enlightenments, and AMD's graphics driver looks for exactly that and
-   locks the machine up the moment it loads. Inside the existing `<hyperv>`
-   element, add:
-
-   ```xml
-   <vendor_id state='on' value='randomid'/>
-   ```
-
-   The rest goes inside `<devices>`. Find the card's PCI address, and that of
-   its audio function, which is the same address ending in `.1`:
-
-   ```sh
-   lspci -Dnn -d ::0300
-   ```
-
-   Add both as host devices, with `managed='no'` so that libvirt leaves the
-   driver work to the hook. For a card at `0000:01:00.0`:
-
-   ```xml
-   <hostdev mode='subsystem' type='pci' managed='no'>
-     <source>
-       <address domain='0x0000' bus='0x01' slot='0x00' function='0x0'/>
-     </source>
-   </hostdev>
-   <hostdev mode='subsystem' type='pci' managed='no'>
-     <source>
-       <address domain='0x0000' bus='0x01' slot='0x00' function='0x1'/>
-     </source>
-   </hostdev>
-   ```
-
-   Give the machine the keyboard and the mouse, since the desktop that would
-   have relayed them will be gone, or on another screen. They are listed by
-   name under `/dev/input/by-id/`; take the keyboard's `event-kbd` entry and
-   the mouse's `event-mouse` one. QEMU holds them for Windows while the machine
-   runs and lets go when it stops; pressing both Shift keys at once hands them
-   to the other side in the meantime. Shift rather than the default Ctrl,
-   because both systems swap Ctrl with Caps Lock, and the first key of the
-   pair reaches whichever side has the keyboard before the toggle fires:
-
-   ```xml
-   <input type='evdev'>
-     <source dev='/dev/input/by-id/usb-KEYBOARD-event-kbd' grab='all' grabToggle='shift-shift' repeat='on'/>
-   </input>
-   <input type='evdev'>
-     <source dev='/dev/input/by-id/usb-MOUSE-event-mouse'/>
-   </input>
-   ```
-
-   Remove the emulated display: the `graphics` element, the `video` element,
-   and the Spice `channel` and `redirdev` elements that exist only for it.
-   Left in, Windows makes the emulated display its main screen and puts
-   nothing useful on the monitor.
+2. Run `windows finish`. It writes into the machine what depends on the
+   computer: the graphics card the firmware booted on, with its audio
+   function, as host devices the hook takes over at start, and the keyboard
+   and the mouse, by their entries under `/dev/input/by-id/`, which QEMU
+   holds for Windows while the machine runs and lets go of when it stops.
+   Pressing both Shift keys at once hands them to the other side in the
+   meantime. It takes out what those replace, the emulated display, the two
+   CD-ROM drives and the tablet, and sets the machine to boot from its disk.
+   It prints what it picked; a computer with several keyboards or mice, or
+   with a card other than the boot one to give, corrects the choice with
+   `virsh -c qemu:///system edit windows`. It refuses, and says why, when the
+   card cannot be passed through as the computer stands: an IOMMU that is
+   off, a card that shares its IOMMU group with another device, or a firmware
+   that demands a 1:1 mapping for it, which is Kernel DMA Protection and is
+   turned off in the BIOS. Anything else the machine should have, a shared
+   directory for instance, is added in virt-manager; the machine already has
+   the shared memory a virtiofs share needs.
 
 3. Start it with `windows start`. The terminal that was typed in vanishes with
    the desktop; that is the hook stopping the login manager, and the start
-   carries on without it. The monitor then shows the
-   firmware, then Windows on its basic display driver. Install the card
-   maker's own driver package at that point, once; from then on Windows drives
-   the card itself, with the card's full memory aperture. Do this after the
-   step above, not before: a driver that loads without the changed identifier
-   locks Windows up mid-installation, and the half-installed result has to be
-   removed from Safe Mode before anything works again.
+   carries on without it. The monitor then shows the firmware, then Windows
+   on its basic display driver. Install the card maker's own driver package
+   at that point, once, rather than the one Windows Update offers; from then
+   on Windows drives the card itself, with the card's full memory aperture.
 
-   Then, from Linux, `windows postinstall`. A USB disc appears in Windows
-   holding the same French (QWERTY) layout as Linux, in the form Microsoft's
-   Keyboard Layout Creator builds into an installable layout, a registry file
-   that swaps Caps Lock and Ctrl, and a text file with the steps, which the
-   command prints as well. The disc is gone at the next shutdown; run the
-   command again if it is needed again.
+   Then, from Linux, `windows postinstall`, with the machine running or not.
+   A USB disc appears in Windows holding the same French (QWERTY) layout as
+   Linux, in the form Microsoft's Keyboard Layout Creator builds into an
+   installable layout, a registry file that swaps Caps Lock and Ctrl, and a
+   text file with the steps, which the command prints as well. The disc
+   stays in the machine; virt-manager removes it once it is no longer wanted.
 
    If instead the login screen comes straight back, the start failed after
    the hook had done its part, and `journalctl -k` says why. One cause with a
@@ -510,11 +482,55 @@ card's power settings, and by a route that does not always work.
 Nothing is done to the card's memory regions. Advice from 2025 has AMD's
 Windows driver refusing a card whose regions were not shrunk first, and this
 hook did that for a while; what the driver was refusing turned out to be the
-Hyper-V that libvirt advertises, and with the identifier changed as the Windows
-section says, the driver takes the full aperture and enables Smart Access
-Memory. A card the desktop had been using, a card handed over straight from
+Hyper-V that libvirt advertises, and with the identifier changed, as
+`preinstall` does from the start, the driver takes the full aperture and
+enables Smart Access Memory. A card the desktop had been using, a card handed over straight from
 boot, and a card the host had been putting to sleep in each of amdgpu's two
 ways all worked once that was fixed.
+
+### The machine is written in two halves, around the install
+
+A machine definition is a few hundred lines that virt-manager writes well, and
+then a dozen changes it has no interface for: host devices marked
+`managed='no'`, evdev inputs and their toggle, the hypervisor identifier, and
+an emulated display to take out. Those were the steps that went wrong by hand,
+so the [`windows` command][windows-cmd] writes the whole definition instead,
+in two halves, because the install sits between them: Windows has to be
+installed through an emulated display before the card is involved, and the
+card, the keyboard and the mouse can only be written in afterwards.
+
+`preinstall` writes everything that is the same on every computer, and sizes
+the rest from the one it runs on: half the memory, all but two of the cores
+with their threads, and, out of the Hyper-V enlightenments virt-manager would
+choose, those the host offers. The changed hypervisor identifier goes in from
+the start, since nothing minds it until AMD's driver does, and so does shared
+memory, so that a virtiofs share can be added later in virt-manager without a
+further edit. The installer is not an argument: it lives wherever it was
+downloaded, and virt-manager, which is where it is put in and taken out
+again, knows how to hand a file to a machine. So the command makes two empty
+drives and leaves the choosing to virt-manager. Two, so that the drivers are
+within reach while the installer runs from the other, and on SATA, the one
+bus Windows setup reads without a driver, which matters for the disc that
+carries the drivers.
+
+`finish` writes in what depends on the computer, choosing by rule rather than
+by argument, and printing the choice. The card is the one the firmware booted
+on, since that is the one a single-card computer has and the one whose
+monitor Windows will appear on, with every function at its address, because
+the audio function that shares the card cannot be left behind. The keyboard
+and mouse are the first entries under `/dev/input/by-id/` that are a device's
+main interface: a mouse with extra buttons also registers as a keyboard, and a
+keyboard with a wheel as a mouse, and those secondary interfaces carry their
+interface number in their name. Both Shift keys are the toggle rather than the
+default Ctrl, because both systems swap Ctrl with Caps Lock, and the first
+key of the pair reaches whichever side has the keyboard before the toggle
+fires. The emulated display goes, because Windows makes an emulated display
+its main screen and puts nothing useful on the monitor otherwise, and the
+tablet with it; the PS/2 keyboard and mouse stay, because the events QEMU
+reads from the passed-through devices reach Windows through them. And a card
+that could not be passed through is refused rather than written, since
+libvirt would refuse the same start with the same objection, after the hook
+had already taken the desktop down.
 
 ### Windows gets its keyboard on a disc
 
@@ -535,11 +551,14 @@ its input in UTF-16 with Windows line endings, and the registry editor is
 happiest with the same, so the build converts both on the way and leaves the
 sources in the repository as plain text. `windows postinstall` copies the disc
 into libvirt's storage pool the first time, under a name derived from its
-content so that a changed disc gets a fresh copy, and hot-plugs it into the
-running machine as a USB drive. The copy exists because QEMU is only allowed
-to read files libvirt has labelled, and libvirt cannot label anything on the
-read-only image. A hot-plugged drive is not written into the definition, so
-it disappears at the next shutdown, which is what a settings disc should do.
+content so that a changed disc gets a fresh copy, and attaches it to the
+machine as a USB drive, in the definition and, if the machine is running, in
+the running machine too, so that it is there whenever the command was run.
+The copy exists because QEMU is only allowed to read files libvirt has
+labelled, and libvirt cannot label anything on the read-only image. USB,
+because a USB drive can be added to a running machine where a SATA one
+cannot. The drive stays until virt-manager removes it, which is the one place
+the machine is edited from anyway.
 
 ### SELinux does not let libvirt run QEMU hooks
 
@@ -896,6 +915,8 @@ editing the `FROM` line.
 [registries]: rootfs/etc/containers/registries.d/yellowtail.yaml
 [tmpfiles]: rootfs/usr/lib/tmpfiles.d/yellowtail.conf
 [vconsole]: rootfs/etc/vconsole.conf
+[virtio-win]: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
+[win11]: https://www.microsoft.com/software-download/windows11
 [windows-cmd]: rootfs/usr/bin/windows
 [workflow]: .github/workflows/build.yml
 [xkb-registry]: rootfs/etc/xkb/rules/evdev.xml
