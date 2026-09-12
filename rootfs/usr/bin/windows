@@ -141,20 +141,17 @@ print(f"{machine}: {memory // 1048576} GiB of memory, {cores} cores of {threads}
 PY
 }
 
-finish() {
-    case $(virsh domstate "$machine" 2> /dev/null || true) in
-        '')
-            echo "windows: no machine; run windows preinstall first" >&2
-            exit 1
-            ;;
-        'shut off')
-            ;;
-        *)
-            echo "windows: shut the machine down first" >&2
-            exit 1
-            ;;
-    esac
-    python3 - "$uri" "$machine" <<'PY'
+postinstall() {
+    state=$(virsh domstate "$machine" 2> /dev/null) || {
+        echo "windows: no machine; run windows preinstall first" >&2
+        exit 1
+    }
+    if [[ $state != 'shut off' ]]; then
+        echo "windows: shut the machine down first" >&2
+        exit 1
+    fi
+    if ! virsh dumpxml --inactive "$machine" | grep -q '<hostdev'; then
+        python3 - "$uri" "$machine" <<'PY'
 import glob
 import os
 import re
@@ -178,8 +175,6 @@ def pci(device, attribute):
 ET.register_namespace('libosinfo', 'http://libosinfo.org/xmlns/libvirt/domain/1.0')
 domain = ET.fromstring(virsh('dumpxml', '--inactive', machine))
 devices = domain.find('devices')
-if devices.find('hostdev') is not None:
-    fail('the machine already has its card')
 
 cards = [os.path.basename(os.path.dirname(p)) for p in glob.glob('/sys/bus/pci/devices/*/boot_vga')
          if open(p).read().strip() == '1']
@@ -241,9 +236,7 @@ for name, entries in ('keyboard', keyboards), ('mouse', mice):
     if len(entries) > 1:
         print(f"  not: {' '.join(entries[1:])}")
 PY
-}
-
-postinstall() {
+    fi
     iso=/usr/share/yellowtail/windows.iso
     name="postinstall-$(sha256sum "$iso" | cut -c1-12).iso"
     if ! virsh vol-info --pool "$pool" "$name" > /dev/null 2>&1; then
@@ -268,9 +261,6 @@ case ${1-} in
     preinstall)
         preinstall
         ;;
-    finish)
-        finish
-        ;;
     start)
         virsh start "$machine"
         ;;
@@ -287,7 +277,7 @@ case ${1-} in
         virsh domstate "$machine"
         ;;
     *)
-        echo "usage: windows preinstall|finish|start|postinstall|stop|kill|status" >&2
+        echo "usage: windows preinstall|postinstall|start|stop|kill|status" >&2
         exit 1
         ;;
 esac

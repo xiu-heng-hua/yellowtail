@@ -154,7 +154,7 @@ below](#virtual-machines-arrive-without-their-state-directories).
    disc, which brings the rest of the drivers, let Windows Update finish,
    then shut down.
 
-2. Run `windows finish`. It writes into the machine what depends on the
+2. Run `windows postinstall`. It writes into the machine what depends on the
    computer: the graphics card the firmware booted on, with its audio
    function, as host devices the hook takes over at start, and the keyboard
    and the mouse, by their entries under `/dev/input/by-id/`, which QEMU
@@ -172,19 +172,21 @@ below](#virtual-machines-arrive-without-their-state-directories).
    directory for instance, is added in virt-manager; the machine already has
    the shared memory a virtiofs share needs.
 
+   It then gives the machine a USB disc holding the same French (QWERTY)
+   layout as Linux, in the form Microsoft's Keyboard Layout Creator builds
+   into an installable layout, a registry file that swaps Caps Lock and Ctrl,
+   and a text file with the steps to take in Windows, which the command
+   prints as well. The disc stays in the machine; virt-manager removes it
+   once it is no longer wanted, and the command run again, with the machine
+   off, puts it back and does nothing else.
+
 3. Start it with `windows start`. The terminal that was typed in vanishes with
    the desktop; that is the hook stopping the login manager, and the start
    carries on without it. The monitor then shows the firmware, then Windows
    on its basic display driver. Install the card maker's own driver package
    at that point, once, rather than the one Windows Update offers; from then
    on Windows drives the card itself, with the card's full memory aperture.
-
-   Then, from Linux, `windows postinstall`, with the machine running or not.
-   A USB disc appears in Windows holding the same French (QWERTY) layout as
-   Linux, in the form Microsoft's Keyboard Layout Creator builds into an
-   installable layout, a registry file that swaps Caps Lock and Ctrl, and a
-   text file with the steps, which the command prints as well. The disc
-   stays in the machine; virt-manager removes it once it is no longer wanted.
+   Then take the steps from the disc.
 
    If instead the login screen comes straight back, the start failed after
    the hook had done its part, and `journalctl -k` says why. One cause with a
@@ -513,9 +515,9 @@ within reach while the installer runs from the other, and on SATA, the one
 bus Windows setup reads without a driver, which matters for the disc that
 carries the drivers.
 
-`finish` writes in what depends on the computer, choosing by rule rather than
-by argument, and printing the choice. The card is the one the firmware booted
-on, since that is the one a single-card computer has and the one whose
+`postinstall` writes in what depends on the computer, choosing by rule rather
+than by argument, and printing the choice. The card is the one the firmware
+booted on, since that is the one a single-card computer has and the one whose
 monitor Windows will appear on, with every function at its address, because
 the audio function that shares the card cannot be left behind. The keyboard
 and mouse are the first entries under `/dev/input/by-id/` that are a device's
@@ -530,7 +532,9 @@ tablet with it; the PS/2 keyboard and mouse stay, because the events QEMU
 reads from the passed-through devices reach Windows through them. And a card
 that could not be passed through is refused rather than written, since
 libvirt would refuse the same start with the same objection, after the hook
-had already taken the desktop down.
+had already taken the desktop down. The same command hands over the disc
+described next, because both are what comes after the install; run again, it
+finds the card already written and only puts the disc back.
 
 ### Windows gets its keyboard on a disc
 
@@ -551,14 +555,12 @@ its input in UTF-16 with Windows line endings, and the registry editor is
 happiest with the same, so the build converts both on the way and leaves the
 sources in the repository as plain text. `windows postinstall` copies the disc
 into libvirt's storage pool the first time, under a name derived from its
-content so that a changed disc gets a fresh copy, and attaches it to the
-machine as a USB drive, in the definition and, if the machine is running, in
-the running machine too, so that it is there whenever the command was run.
-The copy exists because QEMU is only allowed to read files libvirt has
-labelled, and libvirt cannot label anything on the read-only image. USB,
-because a USB drive can be added to a running machine where a SATA one
-cannot. The drive stays until virt-manager removes it, which is the one place
-the machine is edited from anyway.
+content so that a changed disc gets a fresh copy, and writes it into the
+definition as a USB drive, so that it is there at every start. The copy
+exists because QEMU is only allowed to read files libvirt has labelled, and
+libvirt cannot label anything on the read-only image. The drive stays until
+virt-manager removes it, which is the one place the machine is edited from
+anyway.
 
 ### SELinux does not let libvirt run QEMU hooks
 
