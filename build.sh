@@ -26,6 +26,7 @@ dnf install \
     fuse \
     fuse-libs \
     gcc \
+    gmp-devel \
     ibus-mozc \
     make \
     patch \
