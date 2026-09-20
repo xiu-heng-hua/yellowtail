@@ -62,7 +62,7 @@ sed 's/$/\r/' /usr/share/yellowtail/windows/README.txt > /run/postinstall/README
 
 xorriso -as mkisofs -quiet -J -R -V POSTINSTALL -o /usr/share/yellowtail/windows.iso /run/postinstall
 
-systemctl enable brew-setup.service brew-update.timer brew-upgrade.timer
+systemctl enable brew-setup.service brew-update.timer brew-upgrade.timer flatpak-preinstall.service
 
 python3 -c "
 import sqlite3

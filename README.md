@@ -53,12 +53,9 @@ names the applications to install: [Bitwarden](https://bitwarden.com/),
 Lever](https://mijorus.it/projects/gearlever/), which integrates AppImages into
 the desktop, alongside the six GNOME applications the desktop itself reaches for
 — Sushi for the spacebar preview in Files, Extensions, Characters, Fonts, Image
-Viewer and Document Viewer. Nothing installs them on its own; run this once on a
-new machine:
-
-```sh
-sudo flatpak preinstall
-```
+Viewer and Document Viewer. [`flatpak-preinstall.service`][preinstall-unit]
+installs them at every startup, so there is nothing to run on a new machine, and
+an application added to the list later arrives with the image that adds it.
 
 Command-line tools are not in the image, but Homebrew is. It unpacks itself on
 first boot, so `brew install` works with nothing to set up. It lives in
@@ -749,17 +746,37 @@ way, and nothing there checks at all.
 drops the `-shm` index that a read-only `/usr` could not recreate. That is
 tidiness, not a fix.
 
-### Preinstalled Flatpaks have to be asked for
+### Preinstalled Flatpaks need a unit of their own
 
 `flatpak preinstall` reads
 [`rootfs/usr/share/flatpak/preinstall.d/yellowtail.preinstall`][preinstall] and
-installs what it names. Nothing on Fedora runs it, despite
-`flatpak-preinstall(1)` saying the OS does so at startup, so a new machine needs
-the command run by hand once.
+installs what it names. `flatpak-preinstall(1)` says the OS runs it at startup;
+on Fedora nothing does — the `flatpak` package ships no such unit, and GNOME
+Software has no equivalent — so the image ships
+[`flatpak-preinstall.service`][preinstall-unit], and [`build.sh`][build] enables
+it for the same reason it enables the Homebrew units by hand.
 
-It uninstalls only refs it installed itself and which have since left the
-config. Applications installed by hand are never marked and never touched, and
-uninstalling a preinstalled one is a permanent opt-out.
+The unit waits for `network-online.target`, since the applications are
+downloaded, and orders itself after `flatpak-add-fedora-repos.service`, which
+adds the `fedora` remote on first boot and is skipped on every boot after: six
+of the eleven refs come from that remote, and without the ordering preinstall
+would not find them on the one boot where it matters. `--noninteractive` answers
+the questions and keeps the journal to a few lines. `Type=oneshot` carries no
+start timeout by default, which a first boot installing eleven applications
+needs. A boot with no network leaves the unit failed and the system degraded;
+the next boot tries again.
+
+Running it at every startup costs a metadata refresh and nothing else. A ref it
+has already handled is recorded in the system repository's `xa.preinstalled` and
+skipped from then on, whether or not it is still installed — which is both what
+makes uninstalling a preinstalled application a permanent opt-out and what stops
+the next boot from putting it back. It uninstalls only refs it installed itself
+and which have since left the config; applications installed by hand are never
+marked and never touched.
+
+The unit carries the name upstream would give it rather than a `yellowtail-`
+one, so that if `flatpak` ever ships its own there is a single unit at a single
+path, whichever of the two is written last, instead of two doing the work twice.
 
 The applications themselves are not in the image, and never were: on Silverblue
 the GNOME set arrives as Fedora Flatpaks placed by the installer, which is why a
@@ -911,6 +928,7 @@ editing the `FROM` line.
 [packages]: https://github.com/xiu-heng-hua/yellowtail/pkgs/container/yellowtail
 [policy]: rootfs/etc/containers/policy.json
 [preinstall]: rootfs/usr/share/flatpak/preinstall.d/yellowtail.preinstall
+[preinstall-unit]: rootfs/usr/lib/systemd/system/flatpak-preinstall.service
 [pubkey]: rootfs/etc/pki/containers/yellowtail.pub
 [pungi]: https://forge.fedoraproject.org/releng/pungi-fedora/src/branch/f44/fedora.conf
 [reg]: rootfs/usr/share/yellowtail/windows/swap-caps-ctrl.reg

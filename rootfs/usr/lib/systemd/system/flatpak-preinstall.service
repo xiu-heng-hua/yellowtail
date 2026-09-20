@@ -1,0 +1,13 @@
+[Unit]
+Description=Install flatpaks that are part of the operating system
+Documentation=man:flatpak-preinstall(1)
+Wants=network-online.target
+After=network-online.target flatpak-add-fedora-repos.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/flatpak preinstall --system --noninteractive
+
+[Install]
+WantedBy=multi-user.target
