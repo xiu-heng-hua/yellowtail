@@ -51,12 +51,12 @@ names the applications to install: [Bitwarden](https://bitwarden.com/),
 [Discord](https://discord.com/), [Thunderbird](https://www.thunderbird.net/),
 [VSCodium](https://vscodium.com/), [Cine](https://github.com/diegopvlk/Cine) to
 play video and audio, and [Gear Lever](https://mijorus.it/projects/gearlever/),
-which integrates AppImages into the desktop, alongside the six GNOME
+which integrates AppImages into the desktop, alongside the eight GNOME
 applications the desktop itself reaches for — Sushi for the spacebar preview in
-Files, Extensions, Characters, Fonts, Image Viewer and Document Viewer.
-[`flatpak-preinstall.service`][preinstall-unit] installs them at every startup,
-so there is nothing to run on a new machine, and an application added to the
-list later arrives with the image that adds it.
+Files, Extensions, Characters, Fonts, Image Viewer, Document Viewer, Text
+Editor and Calculator. [`flatpak-preinstall.service`][preinstall-unit] installs
+them at every startup, so there is nothing to run on a new machine, and an
+application added to the list later arrives with the image that adds it.
 
 Command-line tools are not in the image, but Homebrew is. It unpacks itself on
 first boot, so `brew install` works with nothing to set up. It lives in
@@ -759,13 +759,13 @@ it for the same reason it enables the Homebrew units by hand.
 
 The unit waits for `network-online.target`, since the applications are
 downloaded, and orders itself after `flatpak-add-fedora-repos.service`, which
-adds the `fedora` remote on first boot and is skipped on every boot after: six
-of the twelve refs come from that remote, and without the ordering preinstall
-would not find them on the one boot where it matters. `--noninteractive`
-answers the questions and keeps the journal to a few lines. `Type=oneshot`
-carries no start timeout by default, which a first boot installing twelve
-applications needs. A boot with no network leaves the unit failed and the
-system degraded; the next boot tries again.
+adds the `fedora` remote on first boot and is skipped on every boot after:
+eight of the fourteen refs come from that remote, and without the ordering
+preinstall would not find them on the one boot where it matters.
+`--noninteractive` answers the questions and keeps the journal to a few lines.
+`Type=oneshot` carries no start timeout by default, which a first boot
+installing fourteen applications needs. A boot with no network leaves the unit
+failed and the system degraded; the next boot tries again.
 
 Running it at every startup costs a metadata refresh and nothing else. A ref it
 has already handled is recorded in the system repository's `xa.preinstalled` and
@@ -780,15 +780,17 @@ one, so that if `flatpak` ever ships its own there is a single unit at a single
 path, whichever of the two is written last, instead of two doing the work twice.
 
 The applications themselves are not in the image, and never were: on Silverblue
-the GNOME set arrives as Fedora Flatpaks placed by the installer, which is why a
-machine reaching this image through `bootc switch` keeps them and a fresh
+the GNOME set arrives as Fedora Flatpaks placed by the installer, which is why
+a machine reaching this image through `bootc switch` keeps them and a fresh
 installation has none. The set is eighteen applications, listed as
 `flatpak_remote_refs` under `^Silverblue$` in [pungi-fedora's
-`fedora.conf`][pungi]. Six of them are not really applications you choose but
+`fedora.conf`][pungi]. Eight of them are not really applications you choose but
 parts of the desktop shipped separately — Sushi is what Files calls for the
-spacebar preview, and Extensions, Characters, Fonts, Image Viewer and Document
-Viewer are the only graphical way to reach what they cover — so those six are
-named in the config and the other twelve are left out.
+spacebar preview, and Extensions, Characters, Fonts, Image Viewer, Document
+Viewer, Text Editor and Calculator are the only graphical way to reach what
+they cover — so those eight are named in the config and the other ten are left
+out. Text Editor earns its place twice over: without it `text/plain` falls to
+VSCodium, so a note opened from Files starts an IDE.
 
 ### Which remote a preinstall comes from is decided by name
 
@@ -798,7 +800,7 @@ order and takes the first one carrying the ref, and that order is by priority
 first, then `strcmp` on the name. Both remotes here sit at the default priority
 1, so `fedora` sorts before `flathub` and wins every tie.
 
-It only matters for refs both remotes carry, which is exactly the six GNOME
+It only matters for refs both remotes carry, which is exactly the eight GNOME
 applications: they arrive as Fedora Flatpaks on `org.fedoraproject.Platform`
 rather than the Flathub builds on `org.gnome.Platform`. Bitwarden, Discord,
 Thunderbird, Cine and Gear Lever are on Flathub alone and are unaffected.

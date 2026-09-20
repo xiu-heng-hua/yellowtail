@@ -13,6 +13,9 @@ Branch=stable
 [Flatpak Preinstall it.mijorus.gearlever]
 Branch=stable
 
+[Flatpak Preinstall org.gnome.Calculator]
+Branch=stable
+
 [Flatpak Preinstall org.gnome.Characters]
 Branch=stable
 
@@ -29,6 +32,9 @@ Branch=stable
 Branch=stable
 
 [Flatpak Preinstall org.gnome.Papers]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.TextEditor]
 Branch=stable
 
 [Flatpak Preinstall org.mozilla.thunderbird]
