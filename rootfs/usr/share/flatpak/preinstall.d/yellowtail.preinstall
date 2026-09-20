@@ -7,6 +7,9 @@ Branch=stable
 [Flatpak Preinstall com.vscodium.codium]
 Branch=stable
 
+[Flatpak Preinstall io.github.diegopvlk.Cine]
+Branch=stable
+
 [Flatpak Preinstall it.mijorus.gearlever]
 Branch=stable
 

@@ -49,13 +49,14 @@ it in Settings works and sticks.
 [`rootfs/usr/share/flatpak/preinstall.d/yellowtail.preinstall`][preinstall]
 names the applications to install: [Bitwarden](https://bitwarden.com/),
 [Discord](https://discord.com/), [Thunderbird](https://www.thunderbird.net/),
-[VSCodium](https://vscodium.com/) and [Gear
-Lever](https://mijorus.it/projects/gearlever/), which integrates AppImages into
-the desktop, alongside the six GNOME applications the desktop itself reaches for
-— Sushi for the spacebar preview in Files, Extensions, Characters, Fonts, Image
-Viewer and Document Viewer. [`flatpak-preinstall.service`][preinstall-unit]
-installs them at every startup, so there is nothing to run on a new machine, and
-an application added to the list later arrives with the image that adds it.
+[VSCodium](https://vscodium.com/), [Cine](https://github.com/diegopvlk/Cine) to
+play video and audio, and [Gear Lever](https://mijorus.it/projects/gearlever/),
+which integrates AppImages into the desktop, alongside the six GNOME
+applications the desktop itself reaches for — Sushi for the spacebar preview in
+Files, Extensions, Characters, Fonts, Image Viewer and Document Viewer.
+[`flatpak-preinstall.service`][preinstall-unit] installs them at every startup,
+so there is nothing to run on a new machine, and an application added to the
+list later arrives with the image that adds it.
 
 Command-line tools are not in the image, but Homebrew is. It unpacks itself on
 first boot, so `brew install` works with nothing to set up. It lives in
@@ -759,12 +760,12 @@ it for the same reason it enables the Homebrew units by hand.
 The unit waits for `network-online.target`, since the applications are
 downloaded, and orders itself after `flatpak-add-fedora-repos.service`, which
 adds the `fedora` remote on first boot and is skipped on every boot after: six
-of the eleven refs come from that remote, and without the ordering preinstall
-would not find them on the one boot where it matters. `--noninteractive` answers
-the questions and keeps the journal to a few lines. `Type=oneshot` carries no
-start timeout by default, which a first boot installing eleven applications
-needs. A boot with no network leaves the unit failed and the system degraded;
-the next boot tries again.
+of the twelve refs come from that remote, and without the ordering preinstall
+would not find them on the one boot where it matters. `--noninteractive`
+answers the questions and keeps the journal to a few lines. `Type=oneshot`
+carries no start timeout by default, which a first boot installing twelve
+applications needs. A boot with no network leaves the unit failed and the
+system degraded; the next boot tries again.
 
 Running it at every startup costs a metadata refresh and nothing else. A ref it
 has already handled is recorded in the system repository's `xa.preinstalled` and
@@ -800,10 +801,11 @@ first, then `strcmp` on the name. Both remotes here sit at the default priority
 It only matters for refs both remotes carry, which is exactly the six GNOME
 applications: they arrive as Fedora Flatpaks on `org.fedoraproject.Platform`
 rather than the Flathub builds on `org.gnome.Platform`. Bitwarden, Discord,
-Thunderbird and Gear Lever are on Flathub alone and are unaffected. Pinning the
-Flathub build would mean giving that remote a collection ID and naming it with
-`CollectionID`, or raising its priority above `fedora`; neither is done, because
-the Fedora build of a GNOME application tracks the same release as the shell.
+Thunderbird, Cine and Gear Lever are on Flathub alone and are unaffected.
+Pinning the Flathub build would mean giving that remote a collection ID and
+naming it with `CollectionID`, or raising its priority above `fedora`; neither
+is done, because the Fedora build of a GNOME application tracks the same
+release as the shell.
 
 Thunderbird is on Flathub alone only by name: `fedora` carries the same
 application as `net.thunderbird.Thunderbird`, so `org.mozilla.thunderbird` names
