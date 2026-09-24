@@ -23,6 +23,7 @@ dnf swap --allowerasing ffmpeg-free ffmpeg
 
 dnf install \
     claude-code \
+    code \
     fuse \
     fuse-libs \
     gcc \

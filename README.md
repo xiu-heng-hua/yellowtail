@@ -21,6 +21,7 @@ layer that updates without rebuilding or rebooting.
 
 On top of stock Silverblue the image adds [Ghostty](https://ghostty.org/) as the
 only terminal, [Claude Code](https://claude.com/claude-code),
+[Visual Studio Code](https://code.visualstudio.com/),
 [Steam](https://store.steampowered.com/), [Mozc](https://github.com/google/mozc)
 for Japanese input, [virt-manager](https://virt-manager.org/) for virtual
 machines, and full `ffmpeg` in place of `ffmpeg-free`. The package list is in
@@ -49,8 +50,8 @@ it in Settings works and sticks.
 [`rootfs/usr/share/flatpak/preinstall.d/yellowtail.preinstall`][preinstall]
 names the applications to install: [Bitwarden](https://bitwarden.com/),
 [Discord](https://discord.com/), [Thunderbird](https://www.thunderbird.net/),
-[VSCodium](https://vscodium.com/), [Cine](https://github.com/diegopvlk/Cine) to
-play video and audio, and [Gear Lever](https://mijorus.it/projects/gearlever/),
+[Cine](https://github.com/diegopvlk/Cine) to play video and audio, and
+[Gear Lever](https://mijorus.it/projects/gearlever/),
 which integrates AppImages into the desktop, alongside the eight GNOME
 applications the desktop itself reaches for — Sushi for the spacebar preview in
 Files, Extensions, Characters, Fonts, Image Viewer, Document Viewer, Text
@@ -648,10 +649,11 @@ config-manager setopt` records the change in `/etc/dnf/repos.override.d/`,
 leaving `enabled=1` in the file itself, and tools that read `/etc/yum.repos.d`
 directly go on believing the repository is live.
 
-[`rootfs/etc/yum.repos.d/claude-code.repo`][claude-repo] sets `repo_gpgcheck=1`
-as well as `gpgcheck=1`. They are not the same check: `gpgcheck` verifies the
-packages, and `repo_gpgcheck` verifies the repository metadata that says which
-packages exist. That repository signs its metadata, so both are checked.
+[`rootfs/etc/yum.repos.d/claude-code.repo`][claude-repo] and
+[`vscode.repo`][vscode-repo] set `repo_gpgcheck=1` as well as `gpgcheck=1`. They
+are not the same check: `gpgcheck` verifies the packages, and `repo_gpgcheck`
+verifies the repository metadata that says which packages exist. Both
+repositories sign their metadata, so both checks are made.
 
 ### Terra is reached by its baseurl, not its metalink
 
@@ -790,7 +792,7 @@ spacebar preview, and Extensions, Characters, Fonts, Image Viewer, Document
 Viewer, Text Editor and Calculator are the only graphical way to reach what
 they cover — so those eight are named in the config and the other ten are left
 out. Text Editor earns its place twice over: without it `text/plain` falls to
-VSCodium, so a note opened from Files starts an IDE.
+Visual Studio Code, so a note opened from Files starts an IDE.
 
 ### Which remote a preinstall comes from is decided by name
 
@@ -940,6 +942,7 @@ editing the `FROM` line.
 [tmpfiles]: rootfs/usr/lib/tmpfiles.d/yellowtail.conf
 [vconsole]: rootfs/etc/vconsole.conf
 [virtio-win]: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
+[vscode-repo]: rootfs/etc/yum.repos.d/vscode.repo
 [win11]: https://www.microsoft.com/software-download/windows11
 [windows-cmd]: rootfs/usr/bin/windows
 [workflow]: .github/workflows/build.yml

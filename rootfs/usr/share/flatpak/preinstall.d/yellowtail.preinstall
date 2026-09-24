@@ -4,9 +4,6 @@ Branch=stable
 [Flatpak Preinstall com.discordapp.Discord]
 Branch=stable
 
-[Flatpak Preinstall com.vscodium.codium]
-Branch=stable
-
 [Flatpak Preinstall io.github.diegopvlk.Cine]
 Branch=stable
 
