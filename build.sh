@@ -31,6 +31,7 @@ dnf install \
     ibus-mozc \
     make \
     patch \
+    podman-compose \
     steam \
     virt-manager \
     xdg-terminal-exec
