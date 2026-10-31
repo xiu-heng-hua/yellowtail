@@ -32,8 +32,8 @@ The image also carries what a virtual machine needs to borrow a graphics card:
 a [libvirt hook][hook] that takes any PCI device a machine passes through
 unmanaged away from whatever holds it, the desktop included, when the machine
 starts, and gives it back when the machine stops, and an [SELinux module][cil]
-without which libvirt could not run that hook at all, a [`windows`
-command][windows-cmd] that creates the machine, starts and stops it and
+without which libvirt could not run that hook at all, a [`win`
+command][win-cmd] that creates the machine, starts and stops it and
 reports on it, and a small disc it can hand to Windows with the [keyboard
 layout][klc] and the other settings Windows cannot inherit from Linux. The
 machine itself is created per computer; see [Windows](#windows).
@@ -126,12 +126,12 @@ The machine belongs to the system libvirt: only that one runs [the hook][hook]
 that does the hand-over, and only it may pass hardware through. virt-manager
 opens it by default, but `virsh` run by a user opens a private one unless told
 otherwise, so the `virsh` command below names it with `-c qemu:///system`, and
-so does the [`windows` command][windows-cmd] that creates the machine and
+so does the [`win` command][win-cmd] that creates the machine and
 drives it. Your account has to be in the `libvirt` group, as [described
 below](#virtual-machines-arrive-without-their-state-directories).
 
-1. Create the machine with `windows preinstall`. That defines a machine
-   called `windows`, the name the rest of the command expects, with
+1. Create the machine with `win preinstall`. That defines a machine
+   called `win`, the name the rest of the command expects, with
    everything about it that does not depend on the computer or on where the
    installer is: a 256 GiB disk in libvirt's default pool, UEFI with Secure
    Boot and a TPM, which Windows 11 refuses to install without, the settings
@@ -153,7 +153,7 @@ below](#virtual-machines-arrive-without-their-state-directories).
    disc, which brings the rest of the drivers, let Windows Update finish,
    then shut down.
 
-2. Run `windows postinstall`. It writes into the machine what depends on the
+2. Run `win postinstall`. It writes into the machine what depends on the
    computer: the graphics card the firmware booted on, with its audio
    function, as host devices the hook takes over at start, and the keyboard
    and the mouse, by their entries under `/dev/input/by-id/`, which QEMU
@@ -163,7 +163,7 @@ below](#virtual-machines-arrive-without-their-state-directories).
    CD-ROM drives and the tablet, and sets the machine to boot from its disk.
    It prints what it picked; a computer with several keyboards or mice, or
    with a card other than the boot one to give, corrects the choice with
-   `virsh -c qemu:///system edit windows`. It refuses, and says why, when the
+   `virsh -c qemu:///system edit win`. It refuses, and says why, when the
    card cannot be passed through as the computer stands: an IOMMU that is
    off, a card that shares its IOMMU group with another device, or a firmware
    that demands a 1:1 mapping for it, which is Kernel DMA Protection and is
@@ -179,7 +179,7 @@ below](#virtual-machines-arrive-without-their-state-directories).
    once it is no longer wanted, and the command run again, with the machine
    off, puts it back and does nothing else.
 
-3. Start it with `windows start`. The terminal that was typed in vanishes with
+3. Start it with `win start`. The terminal that was typed in vanishes with
    the desktop; that is the hook stopping the login manager, and the start
    carries on without it. The monitor then shows the firmware, then Windows
    on its basic display driver. Install the card maker's own driver package
@@ -193,13 +193,13 @@ below](#virtual-machines-arrive-without-their-state-directories).
    means the firmware's Kernel DMA Protection is on, and it refuses every
    device on the first PCI buses to VFIO until that is turned off in the BIOS.
 
-4. Shut Windows down from inside Windows, or with `windows stop`, which asks
+4. Shut Windows down from inside Windows, or with `win stop`, which asks
    Windows the same thing through ACPI. Once the machine has stopped, the hook
    hands the card back to its driver and restarts the login manager, so the
    card is the desktop's again. A machine that no longer answers can be
-   stopped with `windows kill`; the hook gives the card back all the same,
+   stopped with `win kill`; the hook gives the card back all the same,
    with a reset if it has to, and that has recovered cleanly here, but for
-   Windows it is a power cut. `windows status` says whether the machine is
+   Windows it is a power cut. `win status` says whether the machine is
    running, and `journalctl -t passthrough` shows every step the hook took.
 
 ## Verifying the images
@@ -495,7 +495,7 @@ A machine definition is a few hundred lines that virt-manager writes well, and
 then a dozen changes it has no interface for: host devices marked
 `managed='no'`, evdev inputs and their toggle, the hypervisor identifier, and
 an emulated display to take out. Those were the steps that went wrong by hand,
-so the [`windows` command][windows-cmd] writes the whole definition instead,
+so the [`win` command][win-cmd] writes the whole definition instead,
 in two halves, because the install sits between them: Windows has to be
 installed through an emulated display before the card is involved, and the
 card, the keyboard and the mouse can only be written in afterwards.
@@ -552,7 +552,7 @@ way Windows expects settings from outside: on a disc.
 the image has already because virt-manager needs it. The layout tool wants
 its input in UTF-16 with Windows line endings, and the registry editor is
 happiest with the same, so the build converts both on the way and leaves the
-sources in the repository as plain text. `windows postinstall` copies the disc
+sources in the repository as plain text. `win postinstall` copies the disc
 into libvirt's storage pool the first time, under a name derived from its
 content so that a changed disc gets a fresh copy, and writes it into the
 definition as a USB drive, so that it is there at every start. The copy
@@ -930,21 +930,21 @@ editing the `FROM` line.
 [gschema]: rootfs/usr/share/glib-2.0/schemas/zz-yellowtail.gschema.override
 [hook]: rootfs/etc/libvirt/hooks/qemu.d/passthrough
 [install-cfg]: rootfs/usr/lib/bootc/install
-[klc]: rootfs/usr/share/yellowtail/windows/fr-qwerty.klc
+[klc]: rootfs/usr/share/yellowtail/win/fr-qwerty.klc
 [packages]: https://github.com/xiu-heng-hua/yellowtail/pkgs/container/yellowtail
 [policy]: rootfs/etc/containers/policy.json
 [preinstall]: rootfs/usr/share/flatpak/preinstall.d/yellowtail.preinstall
 [preinstall-unit]: rootfs/usr/lib/systemd/system/flatpak-preinstall.service
 [pubkey]: rootfs/etc/pki/containers/yellowtail.pub
 [pungi]: https://forge.fedoraproject.org/releng/pungi-fedora/src/branch/f44/fedora.conf
-[reg]: rootfs/usr/share/yellowtail/windows/swap-caps-ctrl.reg
+[reg]: rootfs/usr/share/yellowtail/win/swap-caps-ctrl.reg
 [registries]: rootfs/etc/containers/registries.d/yellowtail.yaml
 [tmpfiles]: rootfs/usr/lib/tmpfiles.d/yellowtail.conf
 [vconsole]: rootfs/etc/vconsole.conf
 [virtio-win]: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
 [vscode-repo]: rootfs/etc/yum.repos.d/vscode.repo
 [win11]: https://www.microsoft.com/software-download/windows11
-[windows-cmd]: rootfs/usr/bin/windows
+[win-cmd]: rootfs/usr/bin/win
 [workflow]: .github/workflows/build.yml
 [xkb-registry]: rootfs/etc/xkb/rules/evdev.xml
 [xkb-symbols]: rootfs/etc/xkb/symbols/fr-qwerty

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-machine=windows
+machine=win
 uri=qemu:///system
 pool=default
 
@@ -12,11 +12,11 @@ virsh() {
 
 preinstall() {
     if virsh dominfo "$machine" > /dev/null 2>&1; then
-        echo "windows: the machine already exists" >&2
+        echo "win: the machine already exists" >&2
         exit 1
     fi
     if virsh vol-info --pool "$pool" "$machine.qcow2" > /dev/null 2>&1; then
-        echo "windows: a disk named $machine.qcow2 already exists in the $pool pool" >&2
+        echo "win: a disk named $machine.qcow2 already exists in the $pool pool" >&2
         exit 1
     fi
     virsh vol-create-as "$pool" "$machine.qcow2" 256G --format qcow2 > /dev/null
@@ -143,11 +143,11 @@ PY
 
 postinstall() {
     state=$(virsh domstate "$machine" 2> /dev/null) || {
-        echo "windows: no machine; run windows preinstall first" >&2
+        echo "win: no machine; run win preinstall first" >&2
         exit 1
     }
     if [[ $state != 'shut off' ]]; then
-        echo "windows: shut the machine down first" >&2
+        echo "win: shut the machine down first" >&2
         exit 1
     fi
     if ! virsh dumpxml --inactive "$machine" | grep -q '<hostdev'; then
@@ -165,7 +165,7 @@ def virsh(*args, **kwargs):
     return subprocess.run(['virsh', '-c', uri, *args], check=True, text=True, capture_output=True, **kwargs).stdout
 
 def fail(message):
-    print(f'windows: {message}', file=sys.stderr)
+    print(f'win: {message}', file=sys.stderr)
     sys.exit(1)
 
 def pci(device, attribute):
@@ -237,7 +237,7 @@ for name, entries in ('keyboard', keyboards), ('mouse', mice):
         print(f"  not: {' '.join(entries[1:])}")
 PY
     fi
-    iso=/usr/share/yellowtail/windows.iso
+    iso=/usr/share/yellowtail/win-postinstall.iso
     name="postinstall-$(sha256sum "$iso" | cut -c1-12).iso"
     if ! virsh vol-info --pool "$pool" "$name" > /dev/null 2>&1; then
         virsh vol-create-as "$pool" "$name" "$(stat -c %s "$iso")" --format raw > /dev/null
@@ -254,7 +254,7 @@ PY
 </disk>
 XML
     fi
-    cat /usr/share/yellowtail/windows/README.txt
+    cat /usr/share/yellowtail/win/README.txt
 }
 
 case ${1-} in
@@ -277,7 +277,7 @@ case ${1-} in
         virsh domstate "$machine"
         ;;
     *)
-        echo "usage: windows preinstall|postinstall|start|stop|kill|status" >&2
+        echo "usage: win preinstall|postinstall|start|stop|kill|status" >&2
         exit 1
         ;;
 esac
