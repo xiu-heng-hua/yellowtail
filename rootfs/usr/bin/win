@@ -10,7 +10,7 @@ virsh() {
     command virsh -c "$uri" "$@"
 }
 
-preinstall() {
+create() {
     if virsh dominfo "$machine" > /dev/null 2>&1; then
         echo "win: the machine already exists" >&2
         exit 1
@@ -143,7 +143,7 @@ PY
 
 postinstall() {
     state=$(virsh domstate "$machine" 2> /dev/null) || {
-        echo "win: no machine; run win preinstall first" >&2
+        echo "win: no machine; run win create first" >&2
         exit 1
     }
     if [[ $state != 'shut off' ]]; then
@@ -257,27 +257,67 @@ XML
     cat /usr/share/yellowtail/win/README.txt
 }
 
+usage() {
+    cat <<'EOF'
+win: run Windows in a virtual machine
+
+Usage: win <command>
+
+Commands
+  create        build the machine: a 256 GiB disk, UEFI with Secure Boot, a TPM,
+                and an emulated display to install Windows through
+  kill          cut the power; last resort when stop does nothing
+  postinstall   hand it the graphics card, keyboard and mouse, and attach the
+                settings disc
+  start         boot Windows; the desktop gives up the graphics card
+  status        say whether the machine is running or shut off
+  stop          ask Windows to shut down, like the power button
+
+First time
+  1. win create
+  2. In virt-manager, put the Windows and virtio-win discs in the machine
+     called win, then install Windows
+  3. win postinstall
+  4. win start
+EOF
+}
+
+require_machine() {
+    virsh domstate "$machine" > /dev/null 2>&1 || {
+        echo "win: no machine; run win create first" >&2
+        exit 1
+    }
+}
+
 case ${1-} in
-    preinstall)
-        preinstall
+    create)
+        create
         ;;
-    start)
-        virsh start "$machine"
+    kill)
+        require_machine
+        virsh destroy "$machine"
         ;;
     postinstall)
         postinstall
         ;;
-    stop)
-        virsh shutdown "$machine"
-        ;;
-    kill)
-        virsh destroy "$machine"
+    start)
+        require_machine
+        virsh start "$machine"
         ;;
     status)
-        virsh domstate "$machine"
+        require_machine
+        echo "win: $(virsh domstate "$machine")"
+        ;;
+    stop)
+        require_machine
+        virsh shutdown "$machine"
+        ;;
+    '' | help | -h | --help)
+        usage
         ;;
     *)
-        echo "usage: win preinstall|postinstall|start|stop|kill|status" >&2
+        echo "win: unknown command '$1'" >&2
+        echo "Try 'win help'." >&2
         exit 1
         ;;
 esac

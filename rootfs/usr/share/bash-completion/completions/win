@@ -1,0 +1,7 @@
+_win() {
+    if [[ $COMP_CWORD -eq 1 ]]; then
+        mapfile -t COMPREPLY < <(compgen -W "create help kill postinstall start status stop" -- "${COMP_WORDS[1]}")
+    fi
+}
+
+complete -F _win win

@@ -130,7 +130,7 @@ so does the [`win` command][win-cmd] that creates the machine and
 drives it. Your account has to be in the `libvirt` group, as [described
 below](#virtual-machines-arrive-without-their-state-directories).
 
-1. Create the machine with `win preinstall`. That defines a machine
+1. Create the machine with `win create`. That defines a machine
    called `win`, the name the rest of the command expects, with
    everything about it that does not depend on the computer or on where the
    installer is: a 256 GiB disk in libvirt's default pool, UEFI with Secure
@@ -484,7 +484,7 @@ Nothing is done to the card's memory regions. Advice from 2025 has AMD's
 Windows driver refusing a card whose regions were not shrunk first, and this
 hook did that for a while; what the driver was refusing turned out to be the
 Hyper-V that libvirt advertises, and with the identifier changed, as
-`preinstall` does from the start, the driver takes the full aperture and
+`create` does from the start, the driver takes the full aperture and
 enables Smart Access Memory. A card the desktop had been using, a card handed over straight from
 boot, and a card the host had been putting to sleep in each of amdgpu's two
 ways all worked once that was fixed.
@@ -500,7 +500,7 @@ in two halves, because the install sits between them: Windows has to be
 installed through an emulated display before the card is involved, and the
 card, the keyboard and the mouse can only be written in afterwards.
 
-`preinstall` writes everything that is the same on every computer, and sizes
+`create` writes everything that is the same on every computer, and sizes
 the rest from the one it runs on: half the memory, all but two of the cores
 with their threads, and, out of the Hyper-V enlightenments virt-manager would
 choose, those the host offers. The changed hypervisor identifier goes in from
