@@ -784,13 +784,13 @@ path, whichever of the two is written last, instead of two doing the work twice.
 The applications themselves are not in the image, and never were: on Silverblue
 the GNOME set arrives as Fedora Flatpaks placed by the installer, which is why
 a machine reaching this image through `bootc switch` keeps them and a fresh
-installation has none. The set is eighteen applications, listed as
-`flatpak_remote_refs` under `^Silverblue$` in [pungi-fedora's
-`fedora.conf`][pungi]. Eight of them are not really applications you choose but
+installation has none. The set is nineteen applications, listed as
+the installer blueprint's forced `flatpaks` under `^Silverblue$` in
+[pungi-fedora's `fedora.conf`][pungi]. Eight of them are not really applications you choose but
 parts of the desktop shipped separately — Sushi is what Files calls for the
 spacebar preview, and Extensions, Characters, Fonts, Image Viewer, Document
 Viewer, Text Editor and Calculator are the only graphical way to reach what
-they cover — so those eight are named in the config and the other ten are left
+they cover — so those eight are named in the config and the other eleven are left
 out. Text Editor earns its place twice over: without it `text/plain` falls to
 Visual Studio Code, so a note opened from Files starts an IDE.
 
@@ -936,7 +936,7 @@ editing the `FROM` line.
 [preinstall]: rootfs/usr/share/flatpak/preinstall.d/yellowtail.preinstall
 [preinstall-unit]: rootfs/usr/lib/systemd/system/flatpak-preinstall.service
 [pubkey]: rootfs/etc/pki/containers/yellowtail.pub
-[pungi]: https://forge.fedoraproject.org/releng/pungi-fedora/src/branch/f44/fedora.conf
+[pungi]: https://forge.fedoraproject.org/releng/pungi-fedora/src/branch/f45/fedora.conf
 [reg]: rootfs/usr/share/yellowtail/win/swap-caps-ctrl.reg
 [registries]: rootfs/etc/containers/registries.d/yellowtail.yaml
 [tmpfiles]: rootfs/usr/lib/tmpfiles.d/yellowtail.conf
