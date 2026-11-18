@@ -322,6 +322,22 @@ nothing installed, and terminal launching fails silently. Nothing in the image
 currently ships a `Terminal=true` entry, so the failure would not appear until
 something did.
 
+### Ghostty is started as `notify`, not `notify-reload`
+
+Opening Ghostty from GNOME starts its user unit by D-Bus activation, and that
+unit is `Type=notify-reload` with `ReloadSignal=SIGUSR2`. Since systemd 262,
+systemd refuses a `notify-reload` service whose process reports ready before it
+handles its reload signal, and Ghostty 1.3.1 sometimes does — notably when it
+reloads its config at startup to follow a dark color scheme. The launch then
+fails with `lacks handler for reload signal USR2`, while `ghostty` run from a
+shell still works.
+
+[The drop-in][ghostty-unit] makes the unit `Type=notify`, which systemd does not
+check this way, and keeps `systemctl --user reload` working through an explicit
+`ExecReload`. The fix upstream,
+[ghostty-org/ghostty#14399](https://github.com/ghostty-org/ghostty/pull/14399),
+ships in Ghostty 1.4.0; the drop-in can go once Terra packages it.
+
 ### The Firefox preference file must sort first
 
 Fedora sets a start page and a pinned tile in
@@ -927,6 +943,7 @@ editing the `FROM` line.
 [ff-prefs]: rootfs/usr/lib64/firefox/browser/defaults/preferences/00-yellowtail.js
 [flathub]: rootfs/usr/share/flatpak/remotes.d/flathub.flatpakrepo
 [fuse-459]: https://github.com/containers/fuse-overlayfs/issues/459
+[ghostty-unit]: rootfs/etc/systemd/user/app-com.mitchellh.ghostty.service.d/yellowtail.conf
 [gschema]: rootfs/usr/share/glib-2.0/schemas/zz-yellowtail.gschema.override
 [hook]: rootfs/etc/libvirt/hooks/qemu.d/passthrough
 [install-cfg]: rootfs/usr/lib/bootc/install
